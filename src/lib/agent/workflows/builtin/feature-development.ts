@@ -1,0 +1,73 @@
+import type { Workflow } from "../types";
+
+export const FEATURE_DEVELOPMENT: Workflow = {
+  id: "feature-development",
+  name: "Feature development",
+  description: "Adaptive understand → specify → plan → implement → test → review → verify → complete.",
+  steps: [
+    {
+      id: "understand",
+      title: "Understand",
+      minComplexity: "simple",
+      requiresApproval: false,
+      batch: "scope",
+      prompt: "Clarify the goal, constraints, and success criteria. Do not edit files yet.",
+    },
+    {
+      id: "specify",
+      title: "Specify",
+      minComplexity: "medium",
+      requiresApproval: false,
+      batch: "scope",
+      prompt: "Write a short spec of the intended behavior. Stay YAGNI. Do not implement yet.",
+    },
+    {
+      id: "plan",
+      title: "Plan",
+      minComplexity: "medium",
+      requiresApproval: true,
+      batch: "plan",
+      prompt: "List concrete file-level tasks and how you will verify each one. Do not implement yet.",
+    },
+    {
+      id: "implement",
+      title: "Implement",
+      minComplexity: "simple",
+      requiresApproval: false,
+      batch: "build",
+      prompt: "Apply the smallest change that matches the plan. Use tools; do not claim edits you did not make.",
+    },
+    {
+      id: "test",
+      title: "Test",
+      minComplexity: "medium",
+      requiresApproval: false,
+      batch: "build",
+      prompt: "Prove the change when tests exist. Prefer running the relevant check over asserting success.",
+    },
+    {
+      id: "review",
+      title: "Review",
+      minComplexity: "complex",
+      requiresApproval: false,
+      batch: "close",
+      prompt: "Check the diff against the spec first, then note quality issues. Fix only what the spec requires.",
+    },
+    {
+      id: "verify",
+      title: "Verify",
+      minComplexity: "simple",
+      requiresApproval: false,
+      batch: "close",
+      prompt: "Confirm with fresh evidence from tools. Do not declare done without that evidence.",
+    },
+    {
+      id: "complete",
+      title: "Complete",
+      minComplexity: "simple",
+      requiresApproval: false,
+      batch: "close",
+      prompt: "Summarize what changed and what was verified. Do not merge or open a pull request.",
+    },
+  ],
+};

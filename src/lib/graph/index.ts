@@ -1,0 +1,11 @@
+export type { FileDescriptor, FileNode, GraphEdge, Evidence, RelationType, FileCategory, GraphConfig, ResolvedContext } from "./types";
+export { RELATION_TYPES } from "./types";
+export { ProjectGraph } from "./ProjectGraph";
+export { RelationshipAnalyzer } from "./analyze/RelationshipAnalyzer";
+export { ContextResolver, contextResolver } from "./ContextResolver";
+export { graphService } from "./GraphService";
+export { FileScanner, shouldIndexPath, isGraphCachePath } from "./scanner/FileScanner";
+export { extractDescriptor } from "./extract/extractDescriptor";
+export { classifyFile, specScope, isAccountSpec, isProjectSpec } from "./classify";
+export { fileNodeId } from "./ids";
+export { DEFAULT_GRAPH_CONFIG, GRAPH_CACHE_DIR } from "./config";

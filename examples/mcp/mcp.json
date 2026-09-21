@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "mock": {
+      "command": "node",
+      "args": ["examples/mcp/mock-server.mjs"]
+    },
+    "github-mock": {
+      "command": "node",
+      "args": ["examples/mcp/github-mock.mjs"],
+      "env": {
+        "GITHUB_TOKEN": "secret://github-mock/GITHUB_TOKEN"
+      }
+    }
+  }
+}
