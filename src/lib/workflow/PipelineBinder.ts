@@ -717,7 +717,7 @@ function lightSubagentSkill(
 
 function subagentTypeFromEvent(event: AgentRunEvent): string {
   const payload = event.payload;
-  if (payload.type !== "tool-started" && payload.type !== "tool-completed") return "";
+  if (payload.type !== "tool-started") return "";
   const input = payload.input;
   if (!input || typeof input !== "object") return "";
   const type = (input as { subagent_type?: unknown }).subagent_type;

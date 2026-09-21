@@ -2,7 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // Runtime env: env!("CARGO_MANIFEST_DIR") is baked into the compiled
+    // build script and stays stale if the repo is moved/renamed.
+    let manifest_dir = PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"),
+    );
     let version = frontend_version(&manifest_dir);
     println!("cargo:rustc-env=KURSOR_VERSION={version}");
     sync_cargo_toml_version(&manifest_dir, &version);

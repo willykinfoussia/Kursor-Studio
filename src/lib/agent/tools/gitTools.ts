@@ -88,7 +88,8 @@ export function createGitCommitTool(deps: { git: AgentGitService }): AgentTool {
       const push = asRecord(input).push === true;
       try {
         if (push) {
-          const preferred = typeof asRecord(input).branch === "string" ? asRecord(input).branch : ctx.harness?.workflow.agentBranch?.name;
+          const branch = asRecord(input).branch;
+          const preferred = typeof branch === "string" ? branch : ctx.harness?.workflow.agentBranch?.name;
           await ensureBranchForPush(deps.git, preferred);
         }
         const result = await deps.git.commit({ message, paths, push });
@@ -113,9 +114,8 @@ export function createGitPushTool(deps: { git: AgentGitService }): AgentTool {
     async execute(input, ctx) {
       const root = requireProjectRoot(ctx.projectRoot);
       if (isFailure(root)) return root;
-      const preferred = typeof asRecord(input).branch === "string"
-        ? asRecord(input).branch
-        : ctx.harness?.workflow.agentBranch?.name;
+      const branch = asRecord(input).branch;
+      const preferred = typeof branch === "string" ? branch : ctx.harness?.workflow.agentBranch?.name;
       try {
         const created = await ensureBranchForPush(deps.git, preferred);
         await deps.git.push();
