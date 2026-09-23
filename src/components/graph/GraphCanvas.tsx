@@ -5,10 +5,17 @@ import {
   GRAPH_WORLD_HEIGHT,
   GRAPH_WORLD_WIDTH,
   bezierPath,
-  edgeOpacity,
-  edgeStrokeWidth,
   nodeColorKind,
+  nodeHaloRadius,
+  nodeLabelOffset,
+  nodeLabelSize,
+  nodeLinkWeight,
+  nodeMarkOpacity,
+  nodeRadius,
+  nodeStrokeWidth,
   seedPosition,
+  weightedEdgeOpacity,
+  weightedEdgeStrokeWidth,
 } from "../../lib/graph/layout";
 import type { FileNode } from "../../lib/graph/types";
 import { useGraphStore } from "../../stores/graphStore";
@@ -21,6 +28,7 @@ interface SimNode {
   y: number;
   vx: number;
   vy: number;
+  radius: number;
   pinned: boolean;
 }
 
@@ -33,6 +41,7 @@ interface ViewTransform {
 const CHARGE = 2200;
 const SPRING = 0.018;
 const REST = 150;
+const NODE_GAP = 18;
 const DAMPING = 0.86;
 const CENTER = 0.0018;
 const ZOOM_MIN = 0.15;
@@ -53,16 +62,18 @@ function neighborsOf(id: string, edges: { source: string; target: string }[]): S
   return next;
 }
 
-function fitTransform(items: Iterable<{ x: number; y: number }>, width: number, height: number): ViewTransform {
+function fitTransform(items: Iterable<{ x: number; y: number; radius: number; path: string }>, width: number, height: number): ViewTransform {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const item of items) {
-    minX = Math.min(minX, item.x - 24);
-    minY = Math.min(minY, item.y - 24);
-    maxX = Math.max(maxX, item.x + 96);
-    maxY = Math.max(maxY, item.y + 24);
+    const labelWidth = Math.min(fileName(item.path).length * nodeLabelSize(item.radius) * 0.62, 220);
+    const pad = item.radius + 8;
+    minX = Math.min(minX, item.x - pad);
+    minY = Math.min(minY, item.y - pad);
+    maxX = Math.max(maxX, item.x + pad + labelWidth);
+    maxY = Math.max(maxY, item.y + pad);
   }
   if (!Number.isFinite(minX) || width < 8 || height < 8) return { x: 40, y: 20, k: 1 };
   const worldWidth = Math.max(maxX - minX, 80);
@@ -99,6 +110,17 @@ export function GraphCanvas() {
     () => edges.filter((edge) => edgeMatchesFilters(edge, visibleIds, relationFilter, showUncertain)),
     [edges, visibleIds, relationFilter, showUncertain],
   );
+  const radiusById = useMemo(() => {
+    const degree = new Map<string, number>();
+    for (const node of visibleNodes) degree.set(node.id, 0);
+    for (const edge of visibleEdges) {
+      degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+      degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+    }
+    const radii = new Map<string, number>();
+    for (const [id, links] of degree) radii.set(id, nodeRadius(links));
+    return radii;
+  }, [visibleNodes, visibleEdges]);
 
   const sim = useRef(new Map<string, SimNode>());
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -128,6 +150,7 @@ export function GraphCanvas() {
       if (existing) {
         existing.node = node;
         existing.path = node.path;
+        existing.radius = radiusById.get(node.id) ?? existing.radius;
         continue;
       }
       const seed = seedPosition(node.id);
@@ -139,6 +162,7 @@ export function GraphCanvas() {
         y: seed.y,
         vx: 0,
         vy: 0,
+        radius: radiusById.get(node.id) ?? nodeRadius(0),
         pinned: false,
       });
     }
@@ -146,7 +170,7 @@ export function GraphCanvas() {
       if (!seen.has(id)) current.delete(id);
     }
     setFrame((value) => value + 1);
-  }, [visibleNodes]);
+  }, [visibleNodes, radiusById]);
 
   const fitAll = useCallback(() => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -175,6 +199,7 @@ export function GraphCanvas() {
     const step = () => {
       const items = [...sim.current.values()];
       const byId = sim.current;
+      for (const item of items) item.radius = radiusById.get(item.id) ?? nodeRadius(0);
       for (let i = 0; i < items.length; i += 1) {
         for (let j = i + 1; j < items.length; j += 1) {
           const left = items[i];
@@ -183,7 +208,8 @@ export function GraphCanvas() {
           const dx = left.x - right.x;
           const dy = left.y - right.y;
           const dist = Math.hypot(dx, dy) || 0.01;
-          const force = CHARGE / (dist * dist);
+          const scale = 1 + 0.45 * (nodeLinkWeight(left.radius) + nodeLinkWeight(right.radius));
+          const force = (CHARGE * scale) / (dist * dist);
           const fx = (dx / dist) * force;
           const fy = (dy / dist) * force;
           if (!left.pinned) {
@@ -194,6 +220,20 @@ export function GraphCanvas() {
             right.vx -= fx;
             right.vy -= fy;
           }
+          const minDist = left.radius + right.radius + NODE_GAP;
+          if (dist < minDist) {
+            const push = (minDist - dist) * 0.35;
+            const ux = dx / dist;
+            const uy = dy / dist;
+            if (!left.pinned) {
+              left.vx += ux * push;
+              left.vy += uy * push;
+            }
+            if (!right.pinned) {
+              right.vx -= ux * push;
+              right.vy -= uy * push;
+            }
+          }
         }
       }
       for (const edge of visibleEdges) {
@@ -203,7 +243,8 @@ export function GraphCanvas() {
         const dx = to.x - from.x;
         const dy = to.y - from.y;
         const dist = Math.hypot(dx, dy) || 0.01;
-        const delta = (dist - REST) * SPRING;
+        const rest = REST + from.radius + to.radius;
+        const delta = (dist - rest) * SPRING;
         const fx = (dx / dist) * delta;
         const fy = (dy / dist) * delta;
         if (!from.pinned) {
@@ -224,8 +265,9 @@ export function GraphCanvas() {
           item.vy *= DAMPING;
           item.x += item.vx;
           item.y += item.vy;
-          item.x = Math.max(48, Math.min(GRAPH_WORLD_WIDTH - 48, item.x));
-          item.y = Math.max(36, Math.min(GRAPH_WORLD_HEIGHT - 36, item.y));
+          const margin = Math.max(48, item.radius + 16);
+          item.x = Math.max(margin, Math.min(GRAPH_WORLD_WIDTH - margin, item.x));
+          item.y = Math.max(margin, Math.min(GRAPH_WORLD_HEIGHT - margin, item.y));
         }
         energy += item.vx * item.vx + item.vy * item.vy;
       }
@@ -235,7 +277,7 @@ export function GraphCanvas() {
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [visibleNodes, visibleEdges]);
+  }, [visibleNodes, visibleEdges, radiusById]);
 
   const placed = [...sim.current.values()];
   const focusId = hoverId ?? selectedNodeId;
@@ -373,6 +415,8 @@ export function GraphCanvas() {
             if (!from || !to) return null;
             const selected = edge.id === selectedEdgeId;
             const dimmed = Boolean(focusNeighbors && !focusNeighbors.has(edge.source) && !focusNeighbors.has(edge.target));
+            const sourceRadius = from.radius;
+            const targetRadius = to.radius;
             return (
               <g
                 key={edge.id}
@@ -385,8 +429,8 @@ export function GraphCanvas() {
                 <path
                   d={bezierPath(from.x, from.y, to.x, to.y)}
                   fill="none"
-                  strokeWidth={edgeStrokeWidth(edge.confidence)}
-                  strokeOpacity={edgeOpacity(edge.confidence)}
+                  strokeWidth={weightedEdgeStrokeWidth(edge.confidence, sourceRadius, targetRadius)}
+                  strokeOpacity={weightedEdgeOpacity(edge.confidence, sourceRadius, targetRadius)}
                 />
               </g>
             );
@@ -395,6 +439,8 @@ export function GraphCanvas() {
             const selected = item.id === selectedNodeId;
             const dimmed = Boolean(focusNeighbors && !focusNeighbors.has(item.id));
             const kind = nodeColorKind(item.node);
+            const radius = radiusById.get(item.id) ?? item.radius;
+            const labelSize = nodeLabelSize(radius);
             return (
               <g
                 key={item.id}
@@ -412,9 +458,13 @@ export function GraphCanvas() {
                 onPointerEnter={() => setHoverId(item.id)}
                 onPointerLeave={() => setHoverId((current) => current === item.id ? null : current)}
               >
-                {selected && <circle className="graph-node-halo" r="22" />}
-                <circle r="8" />
-                <text x="14" y="4">{fileName(item.path)}</text>
+                {selected && <circle className="graph-node-halo" r={nodeHaloRadius(radius)} />}
+                <circle
+                  r={radius}
+                  strokeWidth={nodeStrokeWidth(radius, selected)}
+                  opacity={nodeMarkOpacity(radius)}
+                />
+                <text x={nodeLabelOffset(radius)} y={labelSize * 0.35} style={{ fontSize: labelSize }}>{fileName(item.path)}</text>
                 <title>{item.path}</title>
               </g>
             );

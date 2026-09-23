@@ -4,7 +4,7 @@ import { createSpecGroup, listSpecGroups, writeNewSpec } from "../createSpec";
 import { extractDescriptor } from "../extract/extractDescriptor";
 import { parseSpecFrontmatter } from "../extract/frontmatter";
 import { nodeMatchesFilters, toggleGraphFilter } from "../filters";
-import { edgeStrokeWidth, seedPosition } from "../layout";
+import { edgeStrokeWidth, nodeRadius, seedPosition, weightedEdgeOpacity, weightedEdgeStrokeWidth } from "../layout";
 import { createMergedGraphStore } from "../mergedStore";
 import { fileNodeId } from "../ids";
 import { ProjectGraph } from "../ProjectGraph";
@@ -182,6 +182,36 @@ describe("graph filters and layout helpers", () => {
     expect(edgeStrokeWidth(0)).toBeCloseTo(0.7);
     expect(edgeStrokeWidth(1)).toBeCloseTo(3.7);
     expect(edgeStrokeWidth(0.5)).toBeCloseTo(2.2);
+  });
+
+  it("grows node radius with degree and saturates near the ceiling", () => {
+    const isolated = nodeRadius(0);
+    const leaf = nodeRadius(1);
+    const mid = nodeRadius(4);
+    const hub = nodeRadius(12);
+    const saturated = nodeRadius(40);
+    expect(isolated).toBeCloseTo(6);
+    expect(leaf).toBeGreaterThan(isolated);
+    expect(leaf).toBeCloseTo(8.35, 1);
+    expect(mid).toBeGreaterThan(leaf);
+    expect(hub).toBeGreaterThan(mid);
+    expect(hub).toBeLessThan(26);
+    expect(saturated).toBeGreaterThan(hub);
+    expect(saturated).toBeLessThanOrEqual(26);
+    expect(nodeRadius(80) - saturated).toBeLessThan(0.2);
+  });
+
+  it("thickens a link between two hubs more than a link that touches a leaf", () => {
+    const leaf = nodeRadius(1);
+    const hub = nodeRadius(24);
+    const confidence = 0.6;
+    const leafLink = weightedEdgeStrokeWidth(confidence, leaf, leaf);
+    const mixed = weightedEdgeStrokeWidth(confidence, hub, leaf);
+    const hubLink = weightedEdgeStrokeWidth(confidence, hub, hub);
+    expect(hubLink).toBeGreaterThan(mixed);
+    expect(mixed).toBeGreaterThan(leafLink);
+    expect(weightedEdgeOpacity(confidence, hub, hub)).toBeGreaterThan(weightedEdgeOpacity(confidence, leaf, leaf));
+    expect(weightedEdgeOpacity(1, hub, hub)).toBeLessThanOrEqual(1);
   });
 
   it("seeds the same node ids to the same initial positions", () => {

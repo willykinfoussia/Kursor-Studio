@@ -1,6 +1,7 @@
 import type { AgentLoop } from "../AgentLoop";
 import type { ContextBuilder } from "../ContextBuilder";
 import type { PermissionMode, PermissionPrompter } from "../PermissionManager";
+import type { TaskGrantStore } from "../permissions/grants";
 import type { PermissionRule } from "../permissions/types";
 import type { ToolRegistry } from "../ToolRegistry";
 import { toolRegistry } from "../ToolRegistry";
@@ -36,6 +37,7 @@ export interface SpawnOptions {
   confirmDestructive?: boolean;
   yoloMode?: boolean;
   allowRules?: PermissionRule[];
+  grants?: TaskGrantStore;
   onPermanentGrant?: (rule: PermissionRule) => void;
   getProjectRoot?: () => string | null;
   prompter?: PermissionPrompter;
@@ -107,6 +109,7 @@ export class AgentManager {
       confirmDestructive: options.confirmDestructive,
       yoloMode: options.yoloMode,
       allowRules: options.allowRules,
+      grants: options.grants,
       onPermanentGrant: options.onPermanentGrant,
       getProjectRoot: options.getProjectRoot,
       prompter: options.prompter,

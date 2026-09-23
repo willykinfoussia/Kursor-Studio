@@ -97,28 +97,37 @@ describe("parseDelegateTrailer", () => {
 });
 
 describe("specialist permissions", () => {
-  it("denies write_file on Explore even when the parent has an allow-task grant", async () => {
-    const parentGrants = new TaskGrantStore();
-    parentGrants.add({
-      id: "parent-grant",
+  it("denies write_file on Explore even when the shared session granted it", async () => {
+    const grants = new TaskGrantStore();
+    grants.add({
+      id: "parent-write",
       capability: "filesystem.write",
-      scope: { kind: "project" },
+      scope: { kind: "tools", names: ["write_file"] },
       duration: "task",
       tool: "write_file",
     });
-    const childGrants = new TaskGrantStore();
+    grants.add({
+      id: "parent-fetch",
+      capability: "network.fetch",
+      scope: { kind: "tools", names: ["fetch_url"] },
+      duration: "task",
+      tool: "fetch_url",
+    });
     const permissions = new PermissionManager({
       mode: minPermissionMode("full-access", RESEARCH_AGENT.permissionMode),
       confirmDestructive: false,
       registry: toolRegistry,
       getProjectRoot: () => "C:/Projects/TodoApp",
-      grants: childGrants,
+      grants,
       deniedTools: deniedToolsFor(RESEARCH_AGENT, toolRegistry),
     });
 
-    expect(permissions.grants).not.toBe(parentGrants);
+    expect(permissions.grants).toBe(grants);
     expect(await permissions.authorize("write_file", { path: "src/App.tsx" })).toBe("deny");
     expect(await permissions.authorize("read_file", { path: "src/App.tsx" })).toBe("allow");
+    expect(permissions.needsPrompt("fetch_url", { url: "https://example.com" })).toBe(false);
+    expect(await permissions.authorize("fetch_url", { url: "https://docs.rs" })).toBe("allow");
+    expect(await permissions.authorize("fetch_url", { url: "https://example.com" })).toBe("allow");
   });
 
   it("reuses the same ToolRegistry instances", () => {
@@ -165,6 +174,21 @@ describe("AgentManager", () => {
     expect(() => manager.spawn("implement", spawnOptions({ instanceKey: "i1" }))).not.toThrow();
     expect(() => manager.spawn("implement", spawnOptions({ instanceKey: "i2" }))).not.toThrow();
     expect(() => manager.spawn("implement", spawnOptions({ instanceKey: "i3" }))).toThrow(AgentBusyError);
+  });
+
+  it("shares the parent grant store with the subagent", () => {
+    const loop = new AgentLoop({
+      aiService: { streamChat: async () => textStream("ok") },
+      metrics: new UsageMetrics(),
+    });
+    const manager = new AgentManager({
+      loop,
+      contextBuilder: new ContextBuilder(),
+      registry: toolRegistry,
+    });
+    const grants = new TaskGrantStore();
+    const instance = manager.spawn("explore", spawnOptions({ grants, instanceKey: "shared" }));
+    expect(instance.grants).toBe(grants);
   });
 });
 

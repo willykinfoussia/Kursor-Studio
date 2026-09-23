@@ -16,7 +16,7 @@ export function projectTypeFromEntries(entries: FileEntry[]): string | null {
   return null;
 }
 
-export function projectTypeFromEntries(entries: FileEntry[]): string | null {
+export function mapProjectInfo(info: ProjectInfo): Project {
   return {
     id: info.id,
     accountId: info.accountId ?? "local-account",

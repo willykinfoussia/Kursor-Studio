@@ -42,4 +42,27 @@ describe("agent runtime project context", () => {
     expect(agentRuntime.getContext()?.projectId).toBe("proj-b");
     expect(agentRuntime.getContext()?.conversationId).toBe("b1");
   });
+
+  it("drops task grants when the conversation or project changes", () => {
+    agentRuntime.setContext({ accountId: "local-account", projectId: "proj-a", conversationId: "a1" });
+    agentRuntime.sessionGrants.add({
+      id: "fetch",
+      capability: "network.fetch",
+      scope: { kind: "tools", names: ["fetch_url"] },
+      duration: "task",
+      tool: "fetch_url",
+    });
+    agentRuntime.setContext({ accountId: "local-account", projectId: "proj-a", conversationId: "a2" });
+    expect(agentRuntime.sessionGrants.list()).toEqual([]);
+
+    agentRuntime.sessionGrants.add({
+      id: "fetch-again",
+      capability: "network.fetch",
+      scope: { kind: "tools", names: ["fetch_url"] },
+      duration: "task",
+      tool: "fetch_url",
+    });
+    agentRuntime.clearContext();
+    expect(agentRuntime.sessionGrants.list()).toEqual([]);
+  });
 });

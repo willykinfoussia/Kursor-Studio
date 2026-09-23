@@ -210,8 +210,9 @@ function PermissionApproval({
       {permission.reason && <p className="approval-copy">{permission.reason}</p>}
       <div className="permission-meta">
         <span>Risk: {formatRiskLevel(permission.riskLevel)}</span>
-        <span>Scope: {describeScope(permission.scope)}</span>
+        <span>This call: {describeScope(permission.scope)}</span>
       </div>
+      <p className="approval-copy">Session and project allows cover every {permission.tool.replaceAll("_", " ")} call, including subagents.</p>
       <div className="permission-actions">
         <button type="button" className="permission-deny" onClick={onDeny} aria-keyshortcuts="Control+Backspace">Deny</button>
         <button type="button" className="permission-allow" onClick={onAllowOnce} aria-keyshortcuts="Control+Enter">Allow once</button>

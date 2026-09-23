@@ -17,6 +17,7 @@ import {
   type PermissionPrompter,
 } from "./PermissionManager";
 import type { TaskGrantStore } from "./permissions/grants";
+import { BASELINE_ALLOW_RULES } from "./permissions/policy";
 import type { PermissionRule } from "./permissions/types";
 import type { SkillTurnSession } from "./skills/session";
 import { ToolExecutor } from "./ToolExecutor";
@@ -147,7 +148,7 @@ export class AgentLoop {
         prompter: options.prompter,
         grants: options.grants,
         deniedTools,
-        allowRules: [...(options.allowRules ?? []), ...planAllowRules],
+        allowRules: [...BASELINE_ALLOW_RULES, ...(options.allowRules ?? []), ...planAllowRules],
         yoloMode: options.yoloMode === true,
         onPermanentGrant: options.onPermanentGrant,
         onAsk: (request) => {

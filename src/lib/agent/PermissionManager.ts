@@ -2,7 +2,7 @@ import { PathOutsideProjectError, resolveProjectPath } from "../filesystem/pathU
 import type { PermissionDecision, PermissionGate } from "./PermissionGate";
 import { isDeniedCommand, inputCommand } from "./permissions/commands";
 import { TaskGrantStore } from "./permissions/grants";
-import { allowRuleFromRequest, firstMatchingRule, modeDecision, modeReason } from "./permissions/policy";
+import { allowRuleFromRequest, firstMatchingRule, modeDecision, modeReason, sessionToolScope } from "./permissions/policy";
 import { inferScope } from "./permissions/scope";
 import type {
   ApprovalDecision,
@@ -116,16 +116,17 @@ export class PermissionManager {
     const answer = await pending;
     if (answer === "deny") return this.deny(verdict.reason);
     if (answer === "allow-task" || answer === "allow-permanent") {
+      const scope = sessionToolScope(request.tool);
       this.grants.add({
         id: callId,
         capability: request.capability,
-        scope: request.scope,
+        scope,
         duration: answer === "allow-permanent" ? "permanent" : "task",
         tool: request.tool,
       });
-    }
-    if (answer === "allow-permanent") {
-      this.options.onPermanentGrant?.(allowRuleFromRequest(request));
+      if (answer === "allow-permanent") {
+        this.options.onPermanentGrant?.(allowRuleFromRequest({ ...request, scope }));
+      }
     }
     return "allow";
   }

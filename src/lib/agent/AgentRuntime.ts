@@ -23,7 +23,7 @@ import { ModelRouter } from "./ModelRouter";
 import { GatewayModelProvider } from "./ModelProvider";
 import { PermissionManager, sessionModeFromSettings, type ApprovalDecision, type PermissionMode, type PermissionPrompter } from "./PermissionManager";
 import { TaskGrantStore } from "./permissions/grants";
-import { upsertAllowRule } from "./permissions/policy";
+import { BASELINE_ALLOW_RULES, upsertAllowRule } from "./permissions/policy";
 import type { PermissionRule } from "./permissions/types";
 import { registerBuiltinTools } from "./registerBuiltinTools";
 import { invokedModelPin, tryApplySlashSkill } from "./skills/invokeSkill";
@@ -258,6 +258,7 @@ export class AgentRuntime {
   private runToolNames: string[] = [];
   private runFilePaths: string[] = [];
   readonly workflowSession = new WorkflowSessionState();
+  readonly sessionGrants = new TaskGrantStore();
   private readonly questionWaiters = new Map<string, (answer: UserQuestionAnswer) => void>();
 
   constructor(dependencies: AgentRuntimeDependencies) {
@@ -527,11 +528,18 @@ export class AgentRuntime {
   }
 
   setContext(context: RuntimeContext) {
+    const previous = this.runtimeContext;
+    const switched = previous != null && (
+      previous.conversationId !== context.conversationId
+      || previous.projectId !== context.projectId
+    );
     this.runtimeContext = { ...context };
+    if (switched) this.sessionGrants.clear();
   }
 
   clearContext() {
     this.runtimeContext = null;
+    this.sessionGrants.clear();
     this.cancel();
   }
 
@@ -710,7 +718,7 @@ export class AgentRuntime {
     if (this.compaction.needsCompact(this.messages, budget)) {
       await this.applyCompact("auto");
     }
-    const grants = new TaskGrantStore();
+    const grants = this.sessionGrants;
     const skillSession = createSkillTurnSession(grants, (event) => this.emit(event), this.workflowSession);
     if (/^\/compact\b/i.test(userMessage.content.trim())) {
       await this.applyCompact("manual");
@@ -937,7 +945,7 @@ export class AgentRuntime {
         getProjectRoot: () => this.getProjectRoot(),
         prompter: this.prompter,
         grants,
-        allowRules: settings.permissionWhitelist,
+        allowRules: [...BASELINE_ALLOW_RULES, ...(settings.permissionWhitelist ?? [])],
         yoloMode: settings.yoloMode === true,
         onAsk: (request) => {
           this.setStatus("waiting_approval");
@@ -1239,6 +1247,7 @@ export class AgentRuntime {
       getProjectRoot: () => this.getProjectRoot(),
       prompter: this.prompter,
       hooks: this.hooks,
+      grants: this.sessionGrants,
       beforeToolExecute: (tool, payload) => this.beforeMutatingTool(tool, payload),
       modelPolicy: settings.modelPolicy,
       workflow: this.workflowSession.child(),

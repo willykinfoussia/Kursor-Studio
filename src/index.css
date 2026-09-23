@@ -893,7 +893,7 @@ button { color: inherit; }
 .graph-node.dimmed { opacity: .22; }
 .graph-node text { fill: #d5d9e3; font-size: 11px; }
 .graph-node-halo { fill: none; stroke: var(--accent); stroke-width: 2; opacity: .7; }
-.graph-node circle:not(.graph-node-halo) { stroke: #2a3244; stroke-width: 1.2; }
+.graph-node circle:not(.graph-node-halo) { stroke: #2a3244; }
 .graph-node.kind-account circle:not(.graph-node-halo) { fill: #6b4c9a; }
 .graph-node.kind-project circle:not(.graph-node-halo) { fill: #3d6cb3; }
 .graph-node.kind-functional circle:not(.graph-node-halo) { fill: #2aa8a8; }
@@ -907,7 +907,7 @@ button { color: inherit; }
 .graph-node.kind-docs circle:not(.graph-node-halo) { fill: #7d8594; }
 .graph-node.kind-preference circle:not(.graph-node-halo) { fill: #6b4c9a; }
 .graph-node.kind-generic circle:not(.graph-node-halo) { fill: #4a5568; }
-.graph-node.selected circle:not(.graph-node-halo) { stroke: #e8e4ff; stroke-width: 2; }
+.graph-node.selected circle:not(.graph-node-halo) { stroke: #e8e4ff; }
 .graph-inspector { height: 100%; display: flex; flex-direction: column; background: var(--surface-1); border-left: 1px solid var(--border); }
 .graph-inspector-body { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .graph-inspector-title { font-size: 13px; font-weight: 650; color: #e8ebf2; }

@@ -222,6 +222,9 @@ export function AgentPanel() {
     const next = useAgentStore.getState().conversations.find((item) => item.id === useAgentStore.getState().activeConversationId);
     runtime.adoptConversationWorkflow(next?.workflowSession ?? null);
     runtime.loadMessages(useAgentStore.getState().messages);
+    const projectId = useProjectStore.getState().currentProject?.id;
+    const accountId = useAccountStore.getState().currentAccount?.id ?? "local-account";
+    if (projectId && next) runtime.setContext({ accountId, projectId, conversationId: next.id });
     resetUi();
   };
 

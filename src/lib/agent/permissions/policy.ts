@@ -31,6 +31,15 @@ export function modeDecision(
   return "allow";
 }
 
+export const BASELINE_ALLOW_RULES: readonly PermissionRule[] = [
+  { action: "allow", tool: "web_search", capability: "network.search" },
+  { action: "allow", tool: "fetch_url", capability: "network.fetch" },
+];
+
+export function sessionToolScope(tool: string): PermissionScope {
+  return { kind: "tools", names: [tool] };
+}
+
 export function modeReason(mode: PermissionMode, capability: Capability, decision: ModeDecision): string {
   if (decision === "allow") return `Allowed by ${mode} mode.`;
   if (decision === "deny") return `Mode ${mode} does not allow ${capability}.`;

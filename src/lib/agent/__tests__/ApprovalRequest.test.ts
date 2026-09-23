@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PermissionManager } from "../PermissionManager";
 import { toolPermission } from "../permissions/meta";
+import { BASELINE_ALLOW_RULES } from "../permissions/policy";
 import type { ApprovalRequest, Capability, RiskLevel } from "../permissions/types";
 import { ToolRegistry, type AgentTool } from "../ToolRegistry";
 import { okResult } from "../tools/result";
@@ -116,7 +117,7 @@ describe("ApprovalRequest", () => {
       action: "allow",
       tool: "start_process",
       capability: "terminal.long_running",
-      scope: { kind: "commands", families: ["pnpm"] },
+      scope: { kind: "tools", names: ["start_process"] },
     })]);
   });
 
@@ -164,7 +165,7 @@ describe("ApprovalRequest", () => {
     expect(await permissions.authorize("read_file", { path: ".env" })).toBe("deny");
   });
 
-  it("covers the same path scope until the end of the run", async () => {
+  it("covers every call of the same tool for the session", async () => {
     const asked: string[] = [];
     const permissions = manager([del], {
       prompter: {
@@ -177,11 +178,11 @@ describe("ApprovalRequest", () => {
     expect(await permissions.authorize("delete_file", { path: "src/App.tsx" })).toBe("allow");
     expect(await permissions.authorize("delete_file", { path: "src/lib/agent.ts" })).toBe("allow");
     expect(await permissions.authorize("delete_file", { path: "README.md" })).toBe("allow");
-    expect(asked).toEqual(["src/App.tsx", "README.md"]);
-    expect(permissions.grants.list()).toHaveLength(2);
+    expect(asked).toEqual(["src/App.tsx"]);
+    expect(permissions.grants.list()).toHaveLength(1);
   });
 
-  it("covers command families and domains for the task", async () => {
+  it("covers later commands and hosts of the same tool for the session", async () => {
     const asked: string[] = [];
     const permissions = manager([start, fetch], {
       prompter: {
@@ -197,7 +198,26 @@ describe("ApprovalRequest", () => {
     expect(await permissions.authorize("fetch_url", { url: "https://docs.rs/tauri" })).toBe("allow");
     expect(await permissions.authorize("fetch_url", { url: "https://docs.rs/serde" })).toBe("allow");
     expect(await permissions.authorize("fetch_url", { url: "https://example.com" })).toBe("allow");
-    expect(asked).toEqual(["start_process:commands", "start_process:commands", "fetch_url:domains", "fetch_url:domains"]);
+    expect(asked).toEqual(["start_process:commands", "fetch_url:domains"]);
+  });
+
+  it("allows baseline network tools without prompting", async () => {
+    const search = stubTool("web_search", "network.search", "medium");
+    let asked = 0;
+    const permissions = manager([fetch, search], {
+      mode: "read-only",
+      allowRules: [...BASELINE_ALLOW_RULES],
+      prompter: {
+        async prompt() {
+          asked += 1;
+          return "deny";
+        },
+      },
+    });
+    expect(permissions.needsPrompt("fetch_url", { url: "https://example.com" })).toBe(false);
+    expect(await permissions.authorize("fetch_url", { url: "https://docs.rs" })).toBe("allow");
+    expect(await permissions.authorize("web_search", { query: "tauri" })).toBe("allow");
+    expect(asked).toBe(0);
   });
 
   it("clears task grants at the end of a run", async () => {

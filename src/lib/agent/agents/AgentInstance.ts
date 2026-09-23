@@ -68,6 +68,7 @@ export interface AgentInstanceOptions {
   confirmDestructive?: boolean;
   yoloMode?: boolean;
   allowRules?: PermissionRule[];
+  grants?: TaskGrantStore;
   onPermanentGrant?: (rule: PermissionRule) => void;
   getProjectRoot?: () => string | null;
   prompter?: PermissionPrompter;
@@ -81,7 +82,7 @@ export interface AgentInstanceOptions {
 
 export class AgentInstance {
   readonly definition: AgentDefinition;
-  readonly grants = new TaskGrantStore();
+  readonly grants: TaskGrantStore;
   readonly messages: AgentMessage[] = [];
   private readonly controller = new AbortController();
   private readonly options: AgentInstanceOptions;
@@ -91,6 +92,7 @@ export class AgentInstance {
   constructor(options: AgentInstanceOptions) {
     this.definition = options.definition;
     this.options = options;
+    this.grants = options.grants ?? new TaskGrantStore();
   }
 
   get id() {
