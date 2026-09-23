@@ -15,7 +15,6 @@ import {
   type MonitoringData,
   type MonitoringQuery,
   type TestArtifact,
-  type TestCase,
   type TestLevel,
   type TestResult,
   type TestRun,

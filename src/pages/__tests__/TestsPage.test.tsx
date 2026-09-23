@@ -140,7 +140,7 @@ describe("TestsPage", () => {
       suite: suiteFrom(inspection, null, { runningId: "standard:test", waiting: true }),
     });
     render(<TestsPage />);
-    expect(screen.getByText("RUNNING")).toBeTruthy();
+    expect(screen.getByText("RUNNING", { selector: ".verify-health-title" })).toBeTruthy();
     expect(screen.getByText(/Verifying/)).toBeTruthy();
     expect(screen.getByText("Running…")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();

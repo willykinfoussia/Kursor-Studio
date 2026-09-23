@@ -498,7 +498,7 @@ describe("AgentRuntime", () => {
       expect(result.message).toMatch(/dirty/i);
       expect(result.message).toMatch(/git_commit/);
       expect(result.message).toMatch(/git_push/);
-      expect(result.message).not.toMatch(/stash/i);
+      expect(result.message).toMatch(/Do not stash/);
       expect(createBranch).not.toHaveBeenCalled();
       expect(runtime.workflowSession.agentBranch).toBeNull();
     } finally {

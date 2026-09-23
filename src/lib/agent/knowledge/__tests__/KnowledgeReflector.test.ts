@@ -109,17 +109,21 @@ describe("KnowledgeReflector", () => {
       "knowledge-reflect-started",
       "knowledge-reflect-completed",
     ]);
-    expect(events[1]).toMatchObject({ skillCount: 1, specCount: 0, proposalId: "kp-1" });
+    expect(events[1]).toMatchObject({ skillCount: 1, specCount: 1, proposalId: "kp-1" });
   });
 
-  it("completes without applying when the model returns empty arrays mid-plan", async () => {
+  it("skips reflection while the plan is unfinished", async () => {
     const events: AgentEvent[] = [];
     const store = createMemoryKnowledgeProposalStore();
+    let called = 0;
     let applied = 0;
     const reflector = new KnowledgeReflector({
       ai: {
         streamChat: async () => ({ events: (async function* () {})() }),
-        completeText: async () => ({ text: '{"summary":"Nothing durable","skillActions":[],"specActions":[]}' }),
+        completeText: async () => {
+          called += 1;
+          return { text: '{"summary":"Nothing durable","skillActions":[],"specActions":[]}' };
+        },
       },
       emit: (event) => events.push(event),
       store,
@@ -131,17 +135,13 @@ describe("KnowledgeReflector", () => {
       },
     });
     const proposal = await reflector.run(input({ planUnfinished: true }));
-    expect(proposal?.id).toBe("kp-empty");
-    expect(proposal?.status).toBe("applied");
-    expect(proposal?.payload.skillActions).toEqual([]);
-    expect(proposal?.payload.specActions).toEqual([]);
+    expect(proposal).toBeNull();
+    expect(called).toBe(0);
     expect(applied).toBe(0);
-    expect(await store.get("kp-empty")).toBeTruthy();
-    expect(events[1]).toMatchObject({
-      type: "knowledge-reflect-completed",
-      proposalId: "kp-empty",
-      skillCount: 0,
-      specCount: 0,
+    expect(await store.get("kp-empty")).toBeNull();
+    expect(events[0]).toMatchObject({
+      type: "knowledge-reflect-skipped",
+      reason: "not-implementation",
     });
   });
 

@@ -280,7 +280,6 @@ Search first.
       "using-superpowers",
       "verification-before-completion",
       "writing-plans",
-      "writing-skills",
     ]);
     const skills = new SkillRegistry({ includeBuiltins: true, files: new MemoryFiles() });
     const catalog = await skills.listCatalog();

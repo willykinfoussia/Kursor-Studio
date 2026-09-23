@@ -15,7 +15,7 @@ const MERMAID_BLOCK = /```mermaid[\s\S]*?```/gi;
 const CODE_FENCE = /```(?!mermaid\b)[^\n]*\n[\s\S]*?```/;
 const BACKTICK_PATH = /`[^`\n]+\.[A-Za-z0-9]+`/;
 const FILES_OR_TEST = /\*\*Files:\*\*|\bFiles:\s|##?\s+Tests?\b|\*\*Tests?:\*\*/i;
-const TODO_VERIFY = /\*\*(?:Test|Verification|Done when|V[eé]rif)\*\*|#{2,6}\s+(?:Test|Verification|Done when|V[eé]rif)\b/i;
+const TODO_VERIFY = /\*\*(?:Test|Verification|Done when|V[eé]rif):?\*\*|#{2,6}\s+(?:Test|Verification|Done when|V[eé]rif)\b/i;
 const NUMBERED_TASK_HEADING = /^#{1,6}\s+\d+\.\s+\S/;
 
 const planWriteLocks = new Map<string, Promise<unknown>>();

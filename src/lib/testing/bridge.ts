@@ -3,6 +3,16 @@ import type { CheckResult, VerificationReport } from "../agent/verification/type
 import type { TestLevel, TestRun, TestStrategyDecision } from "./domain";
 import { TestingError } from "./domain";
 
+export function testingCoversHarnessTest(
+  strategy: TestStrategyDecision,
+  levels: readonly TestLevel[],
+): boolean {
+  return levels.some((level) => {
+    const decision = strategy[level];
+    return decision.action !== "not_applicable" && Boolean(decision.runner);
+  });
+}
+
 export function testingLevelsFor(planned: { kinds?: readonly string[] } | null): TestLevel[] | null {
   if (!planned) return null;
   if (!planned.kinds) return ["unit", "integration", "e2e"];

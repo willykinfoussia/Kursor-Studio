@@ -39,9 +39,9 @@ import type { WorkflowSessionState } from "./workflow/sessionState";
 import { ensureUsingSuperpowers } from "./workflow/prompts";
 import { isReadOnlyInteraction } from "./modes";
 import { commandCheckRunner, formatForModel, VerificationEngine } from "./verification/VerificationEngine";
-import { MAX_VERIFICATION_ATTEMPTS, type CheckRunner, type VerificationKinds } from "./verification/types";
-import { planVerificationRun } from "./verification/whenToRun";
-import { mergeTestingFailure, mergeTestingReport, testingLevelsFor, verificationKindsWithoutTest } from "../testing/bridge";
+import { MAX_VERIFICATION_ATTEMPTS, type CheckRunner } from "./verification/types";
+import { planVerificationRun, type VerificationKinds } from "./verification/whenToRun";
+import { mergeTestingFailure, mergeTestingReport, testingCoversHarnessTest, testingLevelsFor, verificationKindsWithoutTest } from "../testing/bridge";
 import type { TestRun, TestStrategyDecision } from "../testing/domain";
 
 export interface AgentLoopDependencies {
@@ -551,7 +551,6 @@ export class AgentLoop {
 
     const runner = this.checkRunner ?? commandCheckRunner((command) => input.executor.run("run_command", { command }));
     const levels = this.testing ? testingLevelsFor(planned) : null;
-    const narrowed = levels ? verificationKindsWithoutTest(planned) : null;
     let outcome = input.outcome;
 
     for (let attempt = 1; attempt <= MAX_VERIFICATION_ATTEMPTS; attempt += 1) {
@@ -564,6 +563,23 @@ export class AgentLoop {
         requestId: input.execution.requestId,
         trigger: "agent",
       });
+
+      let tested: { run: TestRun; strategy: TestStrategyDecision } | null = null;
+      let testingError: unknown = null;
+      if (levels && this.testing) {
+        try {
+          tested = await this.testing.run({
+            levels,
+            requestId: input.execution.requestId,
+            signal: input.signal,
+            runner,
+          });
+        } catch (error) {
+          testingError = error;
+        }
+      }
+      const covers = Boolean(tested && levels && testingCoversHarnessTest(tested.strategy, levels));
+      const narrowed = covers ? verificationKindsWithoutTest(planned) : null;
 
       const harness = await this.verification.run({
         runner,
@@ -590,20 +606,10 @@ export class AgentLoop {
         },
       });
       let report = harness;
-      if (levels && this.testing) {
-        try {
-          const tested = await this.testing.run({
-            levels,
-            requestId: input.execution.requestId,
-            signal: input.signal,
-            runner,
-          });
-          report = tested
-            ? mergeTestingReport(harness, tested.run, tested.strategy, levels)
-            : harness;
-        } catch (error) {
-          report = mergeTestingFailure(harness, error);
-        }
+      if (testingError) {
+        report = mergeTestingFailure(harness, testingError);
+      } else if (tested && levels) {
+        report = mergeTestingReport(harness, tested.run, tested.strategy, levels);
       }
       input.execution.finishVerifyStep(report.ok);
       input.emit({ type: "step-finished", stepId: step.id, index: step.index, kind: "verify" });
