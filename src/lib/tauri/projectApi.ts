@@ -13,7 +13,7 @@ import type {
 } from "../../types/tauri";
 import { invokeCommand, isTauri } from "./invoke";
 
-async function openDirectoryDialog(): Promise<string | null> {
+async function openDirectoryDialog(title = "Open Project"): Promise<string | null> {
   if (!isTauri()) {
     throw new Error("Opening a project requires the Kursor desktop runtime.");
   }
@@ -21,7 +21,7 @@ async function openDirectoryDialog(): Promise<string | null> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "Open Project",
+    title,
   });
   if (Array.isArray(selected)) return selected[0] ?? null;
   return selected;
@@ -75,4 +75,5 @@ export const projectApi = {
   gitLastFetch: () => invokeCommand<number | null>("project_git_last_fetch", undefined, null),
   list: () => invokeCommand<ProjectInfo[]>("project_list", undefined, []),
   remove: (id: string) => invokeCommand<void>("project_remove", { id }),
+  relocate: (id: string, path: string) => invokeCommand<ProjectInfo>("project_relocate", { id, path }),
 };

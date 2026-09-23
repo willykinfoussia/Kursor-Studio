@@ -742,11 +742,24 @@ button { color: inherit; }
 .home-card { text-align: left; }
 .home-github { font-size: 12px; color: var(--text-dim); margin-bottom: 18px; }
 .home-github.on { color: var(--green); }
-.home-heading { font-size: 11px; letter-spacing: .08em; color: var(--text-muted); }
+.home-heading { font-size: 11px; letter-spacing: .08em; color: var(--text-muted); margin: 0; }
+.home-recents-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 4px 0 0; }
+.home-missing-clear { border: 0; background: transparent; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 0; }
+.home-missing-clear:hover { color: var(--red); }
 .home-recents { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 18px; }
 .home-recent { display: flex; flex-direction: column; gap: 2px; text-align: left; border: 1px solid var(--border); background: var(--surface-2); color: inherit; border-radius: 8px; padding: 9px 11px; cursor: pointer; }
 .home-recent.selected, .home-recent:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .home-recent span { color: var(--text-muted); font-size: 11px; }
+.home-recent-row { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); background: var(--surface-2); color: inherit; border-radius: 8px; padding: 9px 11px; }
+.home-recent-row.missing { border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+.home-recent-row:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.home-recent-main { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.home-recent-open { display: flex; flex-direction: column; gap: 2px; text-align: left; border: 0; background: transparent; color: inherit; padding: 0; flex: 1; min-width: 0; cursor: pointer; }
+.home-recent-open:disabled { cursor: default; }
+.home-recent-open > span { color: var(--text-muted); font-size: 11px; word-break: break-all; }
+.home-missing-badge { margin-left: 8px; font-size: 10px; color: var(--red); font-weight: 650; letter-spacing: .04em; }
+.home-recent-actions { margin: 0; }
+.home-recent-row .context-error { padding: 0; }
 .home-actions { display: flex; flex-direction: column; gap: 8px; }
 .account-menu-wrap { position: relative; }
 .account-chip { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: #10141c; color: #c5cad4; border-radius: 7px; padding: 4px 8px; cursor: pointer; font-size: 12px; }

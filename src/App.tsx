@@ -8,6 +8,7 @@ import { HomeScreen } from "./components/onboarding/HomeScreen";
 import { GitHubDeviceCodeOverlay } from "./components/github/GitHubDeviceCodeOverlay";
 import { CloneGitHubDialog } from "./components/project/CloneGitHubDialog";
 import { NewProjectDialog } from "./components/project/NewProjectDialog";
+import { isMissingProject } from "./lib/project/ProjectService";
 import { openProjectAt } from "./lib/project/workspaceActions";
 import { bootstrapMcp } from "./lib/mcp/bootstrap";
 import { settingsApi } from "./lib/tauri/accountApi";
@@ -18,7 +19,6 @@ export default function App() {
   const [newOpen, setNewOpen] = useState(false);
   const account = useAccountStore((state) => state.currentAccount);
   const currentProject = useProjectStore((state) => state.currentProject);
-  const unavailable = useProjectStore((state) => state.unavailable);
 
   useEffect(() => {
     void (async () => {
@@ -35,11 +35,11 @@ export default function App() {
       }
       const last = recents.find((project) => project.id === lastId) ?? recents[0];
       let opened = false;
-      if (settings.openLastProjectOnStartup && last) {
+      if (settings.openLastProjectOnStartup && last && !isMissingProject(last)) {
         try {
           opened = await openProjectAt(last.rootPath);
         } catch {
-          useProjectStore.getState().setUnavailable(last);
+          useProjectStore.getState().markMissing(last.id);
         }
       }
       if (!opened) void bootstrapMcp();
@@ -58,11 +58,8 @@ export default function App() {
     <>
       {!onboarded && <WelcomeScreen onReady={() => setReady(true)} />}
       {showHome && <HomeScreen onClone={() => setCloneOpen(true)} onNew={() => setNewOpen(true)} />}
-      {onboarded && currentProject && !unavailable && (
+      {onboarded && currentProject && (
         <AppShell onClone={() => setCloneOpen(true)} onNew={() => setNewOpen(true)} />
-      )}
-      {onboarded && unavailable && !currentProject && (
-        <HomeScreen onClone={() => setCloneOpen(true)} onNew={() => setNewOpen(true)} />
       )}
       <CloneGitHubDialog open={cloneOpen} onClose={() => setCloneOpen(false)} />
       <NewProjectDialog open={newOpen} onClose={() => setNewOpen(false)} />

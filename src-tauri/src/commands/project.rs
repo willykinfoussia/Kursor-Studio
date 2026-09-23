@@ -45,6 +45,7 @@ pub struct ProjectInfo {
     pub updated_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<i64>,
+    pub exists: bool,
 }
 
 #[derive(Serialize)]
@@ -71,7 +72,12 @@ fn resolve_git_paths(root: &std::path::Path, paths: &[String]) -> AppResult<()> 
     Ok(())
 }
 
+fn project_folder_exists(root_path: &str) -> bool {
+    PathBuf::from(root_path).is_dir()
+}
+
 fn project_to_info(project: ProjectRecord, project_type: Option<String>, github: Option<&crate::database::records::ProjectGithubRepositoryRecord>) -> ProjectInfo {
+    let exists = project_folder_exists(&project.root_path);
     ProjectInfo {
         id: project.id,
         account_id: project.account_id,
@@ -84,6 +90,7 @@ fn project_to_info(project: ProjectRecord, project_type: Option<String>, github:
         created_at: project.created_at,
         updated_at: project.updated_at,
         last_opened_at: project.last_opened_at,
+        exists,
     }
 }
 
@@ -186,6 +193,47 @@ pub fn project_list(state: State<'_, AppState>) -> Vec<ProjectInfo> {
 pub fn project_remove(id: String, state: State<'_, AppState>) -> AppResult<()> {
     state.db.delete_project_github(&id)?;
     state.db.delete_project_metadata(&id)
+}
+
+#[tauri::command]
+pub fn project_relocate(id: String, path: String, state: State<'_, AppState>) -> AppResult<ProjectInfo> {
+    let mut record = state
+        .db
+        .get_project(&id)?
+        .ok_or_else(|| AppError::InvalidRequest("Project not found.".to_owned()))?;
+    let root = PathBuf::from(&path)
+        .canonicalize()
+        .map_err(|_| AppError::ProjectMissing)?;
+    if !root.is_dir() {
+        return Err(AppError::InvalidRequest(
+            "The selected project root is not a directory.".to_owned(),
+        ));
+    }
+    let root = crate::filesystem::strip_verbatim(&root);
+    let root_path = root.to_string_lossy().into_owned();
+    if let Some(occupant) = state.db.get_project_by_path(&root_path)? {
+        if occupant.id != id {
+            return Err(AppError::InvalidRequest(
+                "Another project already uses this folder.".to_owned(),
+            ));
+        }
+    }
+    let name = root
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| record.name.clone());
+    record.root_path = root_path;
+    record.name = name;
+    record.updated_at = now_ms();
+    let stored = state.db.upsert_project(&record).map_err(|error| {
+        let text = error.to_string();
+        if text.to_lowercase().contains("unique") {
+            AppError::InvalidRequest("Another project already uses this folder.".to_owned())
+        } else {
+            error
+        }
+    })?;
+    Ok(enrich_project(&state, stored))
 }
 
 #[tauri::command]

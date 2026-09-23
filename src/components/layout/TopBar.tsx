@@ -46,7 +46,7 @@ export function TopBar({
   const menuRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
   const gitRef = useRef<HTMLDivElement>(null);
-  const listedProjects = projects.length > 0 ? projects : recentProjects;
+  const listedProjects = (projects.length > 0 ? projects : recentProjects).filter((project) => project.exists !== false);
 
   useEffect(() => {
     if (!menuOpen && !accountOpen && !gitOpen) return;
@@ -111,7 +111,6 @@ export function TopBar({
       if (opened) setMenuOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to open the project.";
-      useProjectStore.getState().setUnavailable(null);
       if (!useProjectStore.getState().error) {
         useProjectStore.setState({ error: message });
       }

@@ -11,7 +11,6 @@ interface ProjectState {
   projects: Project[];
   isLoading: boolean;
   error: string | null;
-  unavailable: Project | null;
   projectSettings: Record<string, unknown>;
   gitStatus: { branch: string; changedFiles: number; clean: boolean; ahead: number; behind: number } | null;
   gitError: string | null;
@@ -20,16 +19,34 @@ interface ProjectState {
   closeProject: () => void;
   createProject: (path: string) => Promise<Project>;
   removeProject: (id: string) => Promise<void>;
+  removeMissingProjects: () => Promise<void>;
+  relocateProject: (id: string, path: string) => Promise<Project>;
+  markMissing: (id: string) => void;
   loadProjects: () => Promise<void>;
   loadRecents: () => Promise<void>;
   refreshProjects: () => Promise<void>;
-  setUnavailable: (project: Project | null) => void;
   setGitStatus: (status: ProjectState["gitStatus"]) => void;
   setGitError: (error: string | null) => void;
   patchCurrentProject: (patch: Partial<Project>) => void;
   loadProjectSettings: (projectId: string) => Promise<void>;
   updateProjectSetting: (key: string, value: unknown) => void;
   clearError: () => void;
+}
+
+function isMissingDirectoryError(message: string) {
+  return message.toLowerCase().includes("no longer exists");
+}
+
+function withMissingPath(projects: Project[], path: string): Project[] {
+  return projects.map((item) => (item.rootPath === path ? { ...item, exists: false } : item));
+}
+
+function replaceListed(projects: Project[], project: Project): Project[] {
+  return projects.map((item) => (item.id === project.id ? project : item));
+}
+
+function withMissingId(projects: Project[], id: string): Project[] {
+  return projects.map((item) => (item.id === id ? { ...item, exists: false } : item));
 }
 
 function parseStored(raw: string): unknown {
@@ -46,12 +63,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   isLoading: false,
   error: null,
-  unavailable: null,
   projectSettings: {},
   gitStatus: null,
   gitError: null,
   openProject: async (path) => {
-    set({ isLoading: true, error: null, unavailable: null });
+    set({ isLoading: true, error: null });
     try {
       const project = await projectService.open(path);
       const recents = [project, ...get().recentProjects.filter((item) => item.id !== project.id)].slice(0, 12);
@@ -61,7 +77,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return project;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Project directory no longer exists.";
-      set({ isLoading: false, error: message });
+      const missing = isMissingDirectoryError(message);
+      set((state) => ({
+        isLoading: false,
+        error: missing ? null : message,
+        recentProjects: missing ? withMissingPath(state.recentProjects, path) : state.recentProjects,
+        projects: missing ? withMissingPath(state.projects, path) : state.projects,
+      }));
       throw error;
     }
   },
@@ -79,6 +101,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       currentProject: state.currentProject?.id === id ? null : state.currentProject,
     }));
   },
+  removeMissingProjects: async () => {
+    const ids = [...new Set(
+      [...get().projects, ...get().recentProjects]
+        .filter((item) => item.exists === false)
+        .map((item) => item.id),
+    )];
+    for (const id of ids) {
+      await get().removeProject(id);
+    }
+  },
+  relocateProject: async (id, path) => {
+    const project = await projectService.relocate(id, path);
+    set((state) => ({
+      projects: replaceListed(state.projects, project),
+      recentProjects: replaceListed(state.recentProjects, project),
+      currentProject: state.currentProject?.id === id ? project : state.currentProject,
+    }));
+    return project;
+  },
+  markMissing: (id) => set((state) => ({
+    recentProjects: withMissingId(state.recentProjects, id),
+    projects: withMissingId(state.projects, id),
+    error: null,
+  })),
   loadProjects: async () => {
     const projects = await projectService.list();
     set({ projects });
@@ -90,7 +136,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   refreshProjects: async () => {
     await Promise.all([get().loadRecents(), get().loadProjects()]);
   },
-  setUnavailable: (unavailable) => set({ unavailable }),
   setGitStatus: (gitStatus) => set({ gitStatus }),
   setGitError: (gitError) => set({ gitError }),
   patchCurrentProject: (patch) => set((state) => ({

@@ -1,7 +1,9 @@
 import { useAccountStore } from "../../stores/accountStore";
 import { useProjectStore } from "../../stores/projectStore";
-import { openProjectAt, pickAndOpenProject } from "../../lib/project/workspaceActions";
+import { isMissingProject } from "../../lib/project/ProjectService";
+import { pickAndOpenProject } from "../../lib/project/workspaceActions";
 import { UnassignedConversations } from "../project/UnassignedConversations";
+import { ProjectListItem } from "../project/ProjectListItem";
 
 export function HomeScreen({
   onClone,
@@ -18,10 +20,10 @@ export function HomeScreen({
   const statusMessage = useAccountStore((state) => state.statusMessage);
   const error = useAccountStore((state) => state.error);
   const recentProjects = useProjectStore((state) => state.recentProjects);
-  const unavailable = useProjectStore((state) => state.unavailable);
-  const removeProject = useProjectStore((state) => state.removeProject);
-  const setUnavailable = useProjectStore((state) => state.setUnavailable);
+  const projectError = useProjectStore((state) => state.error);
+  const removeMissingProjects = useProjectStore((state) => state.removeMissingProjects);
   const name = account?.displayName || account?.username || "there";
+  const missingCount = recentProjects.filter(isMissingProject).length;
 
   return (
     <div className="welcome-screen">
@@ -31,29 +33,25 @@ export function HomeScreen({
           {githubConnected ? `GitHub connected${githubUsername ? ` as @${githubUsername}` : ""}` : "Local account"}
         </div>
         {error && <div className="welcome-error">{error}</div>}
+        {projectError && <div className="welcome-error">{projectError}</div>}
         {statusMessage && !error && <div className="welcome-status">{statusMessage}</div>}
         {!githubConnected && (
           <button type="button" className="welcome-btn primary" disabled={isLoading} onClick={() => void signInGitHub().catch(() => undefined)}>
             {isLoading ? (statusMessage ?? "Opening GitHub…") : "Connect GitHub"}
           </button>
         )}
-        {unavailable && (
-          <div className="welcome-error">
-            <div>Project unavailable: {unavailable.name}</div>
-            <div className="modal-actions" style={{ marginTop: 10 }}>
-              <button type="button" className="welcome-btn" onClick={() => { void pickAndOpenProject().then(() => setUnavailable(null)); }}>Locate folder</button>
-              <button type="button" className="welcome-btn" onClick={() => { void removeProject(unavailable.id).then(() => setUnavailable(null)); }}>Remove from Kursor</button>
-            </div>
-          </div>
-        )}
-        <h2 className="home-heading">Recent Projects</h2>
+        <div className="home-recents-heading">
+          <h2 className="home-heading">Recent Projects</h2>
+          {missingCount > 0 && (
+            <button type="button" className="home-missing-clear" onClick={() => void removeMissingProjects()}>
+              Remove missing
+            </button>
+          )}
+        </div>
         <div className="home-recents">
           {recentProjects.length === 0 && <div className="block-empty">No projects yet.</div>}
           {recentProjects.map((project) => (
-            <button key={project.id} type="button" className="home-recent" onClick={() => void openProjectAt(project.rootPath)}>
-              <strong>{project.name}</strong>
-              <span>{project.rootPath}</span>
-            </button>
+            <ProjectListItem key={project.id} project={project} />
           ))}
         </div>
         <div className="home-actions">

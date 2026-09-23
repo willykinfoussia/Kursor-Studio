@@ -6,13 +6,14 @@ import { useAgentStore } from "../../stores/agentStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { useDialogStore } from "../../stores/dialogStore";
 import { usePlanStore } from "../../stores/planStore";
-import { projectService } from "./ProjectService";
+import { isMissingProject, projectService } from "./ProjectService";
 import { ragService } from "../rag/RagService";
 import { graphService } from "../graph/GraphService";
 import { hydrateConversations, hydrateTasks, persistActiveConversation } from "../storage/session";
 import { agentRuntime } from "../agent/AgentRuntime";
 import { ensureGitHubRepository, refreshGitStatus } from "../github/ensureRepository";
 import { bootstrapMcp } from "../mcp/bootstrap";
+import type { Project } from "../../types/project";
 
 async function bindRuntime(projectId: string) {
   const accountId = useAccountStore.getState().currentAccount?.id ?? "local-account";
@@ -62,6 +63,27 @@ export async function pickAndOpenProject() {
 export async function switchProjectById(id: string) {
   const project = useProjectStore.getState().projects.find((item) => item.id === id)
     ?? useProjectStore.getState().recentProjects.find((item) => item.id === id);
-  if (!project) return false;
+  if (!project || isMissingProject(project)) return false;
   return openProjectAt(project.rootPath);
+}
+
+export async function openListedProject(project: Project) {
+  if (isMissingProject(project)) return false;
+  try {
+    return await openProjectAt(project.rootPath);
+  } catch {
+    return false;
+  }
+}
+
+export async function recreateMissingProject(project: Project) {
+  await projectService.createFolder(project.rootPath);
+  return openProjectAt(project.rootPath, { ensureGitHub: false });
+}
+
+export async function locateMissingProject(project: Project) {
+  const path = await projectService.pickDirectory("Locate Project Folder");
+  if (!path) return false;
+  await useProjectStore.getState().relocateProject(project.id, path);
+  return openProjectAt(path);
 }

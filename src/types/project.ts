@@ -13,6 +13,7 @@ export interface Project {
   createdAt?: number;
   updatedAt?: number;
   lastOpenedAt?: number | null;
+  exists?: boolean;
 }
 
 export interface ProjectFile {

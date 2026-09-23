@@ -16,7 +16,7 @@ export function projectTypeFromEntries(entries: FileEntry[]): string | null {
   return null;
 }
 
-export function mapProjectInfo(info: ProjectInfo): Project {
+export function projectTypeFromEntries(entries: FileEntry[]): string | null {
   return {
     id: info.id,
     accountId: info.accountId ?? "local-account",
@@ -30,7 +30,12 @@ export function mapProjectInfo(info: ProjectInfo): Project {
     createdAt: info.createdAt,
     updatedAt: info.updatedAt,
     lastOpenedAt: info.lastOpenedAt,
+    exists: info.exists !== false,
   };
+}
+
+export function isMissingProject(project: Pick<Project, "exists">) {
+  return project.exists === false;
 }
 
 export async function detectProjectType(_rootPath: string) {
@@ -38,8 +43,8 @@ export async function detectProjectType(_rootPath: string) {
 }
 
 export const projectService = {
-  async pickDirectory() {
-    return projectApi.pickDirectory();
+  async pickDirectory(title = "Open Project") {
+    return projectApi.pickDirectory(title);
   },
   async open(path: string): Promise<Project> {
     try {
@@ -64,6 +69,9 @@ export const projectService = {
   },
   async remove(id: string) {
     await projectApi.remove(id);
+  },
+  async relocate(id: string, path: string): Promise<Project> {
+    return mapProjectInfo(await projectApi.relocate(id, path));
   },
   async createFolder(path: string) {
     await gitApi.createFolder(path);

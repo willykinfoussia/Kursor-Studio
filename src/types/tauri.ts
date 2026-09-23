@@ -25,6 +25,7 @@ export interface ProjectInfo {
   createdAt?: number;
   updatedAt?: number;
   lastOpenedAt?: number | null;
+  exists?: boolean;
 }
 
 export interface ProcessResult {

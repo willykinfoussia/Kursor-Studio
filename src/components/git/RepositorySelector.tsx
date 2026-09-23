@@ -17,7 +17,7 @@ export function RepositorySelector({
   const remotes = useGitStore((state) => state.remotes);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const listed = projects.length > 0 ? projects : recents;
+  const listed = (projects.length > 0 ? projects : recents).filter((item) => item.exists !== false);
   const remote = remotes[0];
 
   useEffect(() => {

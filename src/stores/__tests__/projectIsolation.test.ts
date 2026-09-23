@@ -26,4 +26,13 @@ describe("project and settings overlay", () => {
     });
     expect(useProjectStore.getState().recentProjects.filter((item) => item.id === "p1")).toHaveLength(1);
   });
+
+  it("marks a listed project as missing without dropping it", () => {
+    const project = { id: "p1", accountId: "acc", name: "TodoApp", rootPath: "/a", localPath: "/a", exists: true };
+    useProjectStore.setState({ projects: [project], recentProjects: [project], currentProject: project });
+    useProjectStore.getState().markMissing("p1");
+    expect(useProjectStore.getState().recentProjects[0]?.exists).toBe(false);
+    expect(useProjectStore.getState().projects[0]?.exists).toBe(false);
+    expect(useProjectStore.getState().recentProjects).toHaveLength(1);
+  });
 });
