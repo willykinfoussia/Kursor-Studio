@@ -475,7 +475,24 @@ button { color: inherit; }
 }
 .skill-suggest-item.active, .skill-suggest-item:hover { background: #1b2230; }
 .skill-suggest-id { font-size: 12px; color: #d8dce6; }
+.file-suggest-name { display: inline-flex; align-items: center; gap: 6px; }
 .skill-suggest-desc { font-size: 11px; color: #7d8696; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-suggest-empty { padding: 8px 10px; color: #7d8696; font-size: 12px; }
+.file-mention {
+  display: inline;
+  margin: 0 1px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  font: inherit;
+  font-weight: 600;
+  line-height: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.file-mention:hover { color: #9fd4ff; }
 .agent-input-box { border: 1px solid #2c3445; background: #111620; border-radius: 9px; padding: 8px; transition: border-color .15s; }
 .agent-input-box:focus-within { border-color: #6258a8; box-shadow: 0 0 0 2px rgba(139,124,246,.07); }
 .agent-textarea { display: block; width: 100%; max-height: 110px; min-height: 38px; resize: none; border: 0; outline: 0; background: transparent; color: #d8dce6; font-size: 13px; line-height: 1.45; user-select: text; }
@@ -1328,6 +1345,17 @@ button { color: inherit; }
 .verify-menu button:hover { background: #24283a; }
 .verify-menu button.danger { color: #f4b4ba; }
 .verify-panel { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: #11151e; }
+.test-monitor h3 { margin: 14px 0 8px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--verify-muted); }
+.test-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.test-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-dim); }
+.test-filters input, .test-filters select { background: #0d1118; color: inherit; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; min-width: 120px; }
+.test-coverage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.test-level-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.test-runs { width: 100%; border-collapse: collapse; font-size: 12px; }
+.test-runs th, .test-runs td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.test-plan { white-space: pre-wrap; font: 12px "Cascadia Code", Consolas, monospace; background: #0d1118; border-radius: 8px; padding: 10px; overflow: auto; }
+.test-spark { width: 100%; max-width: 320px; height: 72px; color: #8ef0bf; margin-top: 8px; }
+.test-failure { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; text-align: left; }
 .verify-muted, .verify-note, .verify-clip { color: var(--text-muted); font-size: 12px; }
 .verify-note { margin-top: 10px; }
 .verify-gaps li { color: var(--verify-warn); font-size: 12px; }

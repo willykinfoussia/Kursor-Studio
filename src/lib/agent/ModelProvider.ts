@@ -1,4 +1,4 @@
-import type { AIService } from "./AIService";
+import type { AIService, EvaluateOptions, EvaluateResult } from "./AIService";
 import type { AgentStream, AgentMessage, AIRequestOptions } from "./types";
 
 export type ModelProviderKind = "gateway" | "openrouter" | "ollama" | "local";
@@ -24,6 +24,13 @@ export class GatewayModelProvider implements ModelProvider, AIService {
       return Promise.reject(new Error("completeText is not available"));
     }
     return this.service.completeText(messages, options);
+  }
+
+  evaluate(options: EvaluateOptions): Promise<EvaluateResult> {
+    if (!this.service.evaluate) {
+      return Promise.reject(new Error("evaluate is not available"));
+    }
+    return this.service.evaluate(options);
   }
 }
 

@@ -274,6 +274,7 @@ Search first.
       "systematic-debugging",
       "tdd-workflow",
       "test-driven-development",
+      "testing-engine",
       "using-git-worktrees",
       "using-kursor-shell",
       "using-superpowers",

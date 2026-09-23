@@ -303,3 +303,92 @@ export interface KnowledgeProposalRecord {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface TestStrategyRecord {
+  projectId: string;
+  payloadJson: string;
+  updatedAt: number;
+}
+
+export interface UserCaseRecord {
+  id: string;
+  projectId: string;
+  name: string;
+  priority: string;
+  status: string;
+  payloadJson: string;
+  updatedAt: number;
+}
+
+export interface TestRunRecord {
+  id: string;
+  projectId: string;
+  taskId?: string | null;
+  agentRunId?: string | null;
+  commitSha?: string | null;
+  branch?: string | null;
+  status: string;
+  startedAt: number;
+  durationMs?: number | null;
+  payloadJson: string;
+}
+
+export interface TestResultRecord {
+  id: string;
+  runId: string;
+  projectId: string;
+  taskId?: string | null;
+  userCaseId?: string | null;
+  name: string;
+  testType: string;
+  runner: string;
+  status: string;
+  durationMs?: number | null;
+  error?: string | null;
+  file?: string | null;
+}
+
+export interface CoverageSnapshotRecord {
+  id: string;
+  runId: string;
+  projectId: string;
+  lines?: number | null;
+  branches?: number | null;
+  functions?: number | null;
+  statements?: number | null;
+  createdAt: number;
+}
+
+export interface TestArtifactRecord {
+  id: string;
+  runId: string;
+  kind: string;
+  path: string;
+  label: string;
+}
+
+export interface TestRunBundle {
+  run: TestRunRecord;
+  results: TestResultRecord[];
+  coverage?: CoverageSnapshotRecord | null;
+  artifacts: TestArtifactRecord[];
+}
+
+export interface TestMonitoringQuery {
+  projectId: string;
+  branch?: string | null;
+  commitSha?: string | null;
+  taskId?: string | null;
+  status?: string | null;
+  fromMs?: number | null;
+  toMs?: number | null;
+  testType?: string | null;
+  runner?: string | null;
+  userCaseId?: string | null;
+}
+
+export interface TestMonitoringBundle {
+  runs: TestRunRecord[];
+  userCases: UserCaseRecord[];
+  strategy?: TestStrategyRecord | null;
+}

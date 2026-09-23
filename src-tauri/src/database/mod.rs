@@ -22,6 +22,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("006_mcp", include_str!("migrations/006_mcp.sql")),
     ("007_ai_review", include_str!("migrations/007_ai_review.sql")),
     ("008_knowledge_proposals", include_str!("migrations/008_knowledge_proposals.sql")),
+    ("009_testing", include_str!("migrations/009_testing.sql")),
 ];
 const CODING_AGENT_ID: &str = "coding-agent";
 const LOCAL_ACCOUNT_ID: &str = "local-account";
@@ -1688,7 +1689,13 @@ impl Database {
              DELETE FROM ai_file_changes;
              DELETE FROM ai_change_sets;
              DELETE FROM knowledge_proposals;
-             DELETE FROM schema_migrations WHERE version NOT IN ('001_initial', '002_sessions', '003_harness_observability', '004_account_project', '005_run_observability', '006_mcp', '007_ai_review', '008_knowledge_proposals');",
+             DELETE FROM test_artifacts;
+             DELETE FROM coverage_snapshots;
+             DELETE FROM test_results;
+             DELETE FROM test_runs;
+             DELETE FROM user_cases;
+             DELETE FROM test_strategies;
+             DELETE FROM schema_migrations WHERE version NOT IN ('001_initial', '002_sessions', '003_harness_observability', '004_account_project', '005_run_observability', '006_mcp', '007_ai_review', '008_knowledge_proposals', '009_testing');",
         )?;
         self.seed_agents()?;
         self.bootstrap_account_model()?;
@@ -1971,6 +1978,220 @@ impl Database {
         let rows = statement.query_map([conversation_id], map_knowledge_proposal_row)?;
         Ok(rows.filter_map(Result::ok).collect())
     }
+
+    pub fn upsert_test_strategy(&self, record: &TestStrategyRecord) -> AppResult<()> {
+        self.conn()?.execute(
+            "INSERT INTO test_strategies (project_id, payload_json, updated_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(project_id) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                updated_at = excluded.updated_at",
+            params![record.project_id, record.payload_json, record.updated_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_test_strategy(&self, project_id: &str) -> AppResult<Option<TestStrategyRecord>> {
+        self.conn()?
+            .query_row(
+                "SELECT project_id, payload_json, updated_at FROM test_strategies WHERE project_id = ?1",
+                [project_id],
+                map_test_strategy_row,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn replace_user_cases(&self, project_id: &str, cases: &[UserCaseRecord]) -> AppResult<()> {
+        let connection = self.conn()?;
+        connection.execute("DELETE FROM user_cases WHERE project_id = ?1", [project_id])?;
+        for user_case in cases {
+            connection.execute(
+                "INSERT INTO user_cases (id, project_id, name, priority, status, payload_json, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    user_case.id,
+                    project_id,
+                    user_case.name,
+                    user_case.priority,
+                    user_case.status,
+                    user_case.payload_json,
+                    user_case.updated_at
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn list_user_cases(&self, project_id: &str) -> AppResult<Vec<UserCaseRecord>> {
+        let connection = self.conn()?;
+        let mut statement = connection.prepare(
+            "SELECT id, project_id, name, priority, status, payload_json, updated_at
+             FROM user_cases WHERE project_id = ?1 ORDER BY name",
+        )?;
+        let rows = statement.query_map([project_id], map_user_case_row)?;
+        Ok(rows.filter_map(Result::ok).collect())
+    }
+
+    pub fn save_test_run(&self, bundle: &TestRunBundle) -> AppResult<()> {
+        let connection = self.conn()?;
+        let run = &bundle.run;
+        connection.execute(
+            "INSERT INTO test_runs (id, project_id, task_id, agent_run_id, commit_sha, branch, status, started_at, duration_ms, payload_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET
+                project_id = excluded.project_id,
+                task_id = excluded.task_id,
+                agent_run_id = excluded.agent_run_id,
+                commit_sha = excluded.commit_sha,
+                branch = excluded.branch,
+                status = excluded.status,
+                started_at = excluded.started_at,
+                duration_ms = excluded.duration_ms,
+                payload_json = excluded.payload_json",
+            params![
+                run.id,
+                run.project_id,
+                run.task_id,
+                run.agent_run_id,
+                run.commit_sha,
+                run.branch,
+                run.status,
+                run.started_at,
+                run.duration_ms,
+                run.payload_json
+            ],
+        )?;
+        connection.execute("DELETE FROM test_results WHERE run_id = ?1", [&run.id])?;
+        connection.execute("DELETE FROM coverage_snapshots WHERE run_id = ?1", [&run.id])?;
+        connection.execute("DELETE FROM test_artifacts WHERE run_id = ?1", [&run.id])?;
+        for result in &bundle.results {
+            connection.execute(
+                "INSERT INTO test_results (id, run_id, project_id, task_id, user_case_id, name, test_type, runner, status, duration_ms, error, file)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    result.id,
+                    result.run_id,
+                    result.project_id,
+                    result.task_id,
+                    result.user_case_id,
+                    result.name,
+                    result.test_type,
+                    result.runner,
+                    result.status,
+                    result.duration_ms,
+                    result.error,
+                    result.file
+                ],
+            )?;
+        }
+        if let Some(coverage) = &bundle.coverage {
+            connection.execute(
+                "INSERT INTO coverage_snapshots (id, run_id, project_id, lines, branches, functions, statements, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    coverage.id,
+                    coverage.run_id,
+                    coverage.project_id,
+                    coverage.lines,
+                    coverage.branches,
+                    coverage.functions,
+                    coverage.statements,
+                    coverage.created_at
+                ],
+            )?;
+        }
+        for artifact in &bundle.artifacts {
+            connection.execute(
+                "INSERT INTO test_artifacts (id, run_id, kind, path, label) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![artifact.id, artifact.run_id, artifact.kind, artifact.path, artifact.label],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn query_test_monitoring(&self, query: &TestMonitoringQuery) -> AppResult<TestMonitoringBundle> {
+        let connection = self.conn()?;
+        let mut statement = connection.prepare(
+            "SELECT id, project_id, task_id, agent_run_id, commit_sha, branch, status, started_at, duration_ms, payload_json
+             FROM test_runs
+             WHERE project_id = ?1
+               AND (?2 IS NULL OR branch = ?2)
+               AND (?3 IS NULL OR commit_sha = ?3)
+               AND (?4 IS NULL OR task_id = ?4)
+               AND (?5 IS NULL OR status = ?5)
+               AND (?6 IS NULL OR started_at >= ?6)
+               AND (?7 IS NULL OR started_at <= ?7)
+               AND (
+                    ?8 IS NULL AND ?9 IS NULL AND ?10 IS NULL
+                    OR id IN (
+                        SELECT run_id FROM test_results
+                        WHERE (?8 IS NULL OR test_type = ?8)
+                          AND (?9 IS NULL OR runner = ?9)
+                          AND (?10 IS NULL OR user_case_id = ?10)
+                    )
+               )
+             ORDER BY started_at DESC",
+        )?;
+        let rows = statement.query_map(
+            params![
+                query.project_id,
+                query.branch,
+                query.commit_sha,
+                query.task_id,
+                query.status,
+                query.from_ms,
+                query.to_ms,
+                query.test_type,
+                query.runner,
+                query.user_case_id
+            ],
+            map_test_run_row,
+        )?;
+        let runs = rows.filter_map(Result::ok).collect();
+        drop(statement);
+        drop(connection);
+        Ok(TestMonitoringBundle {
+            runs,
+            user_cases: self.list_user_cases(&query.project_id)?,
+            strategy: self.get_test_strategy(&query.project_id)?,
+        })
+    }
+}
+
+fn map_test_strategy_row(row: &Row<'_>) -> rusqlite::Result<TestStrategyRecord> {
+    Ok(TestStrategyRecord {
+        project_id: row.get(0)?,
+        payload_json: row.get(1)?,
+        updated_at: row.get(2)?,
+    })
+}
+
+fn map_user_case_row(row: &Row<'_>) -> rusqlite::Result<UserCaseRecord> {
+    Ok(UserCaseRecord {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        name: row.get(2)?,
+        priority: row.get(3)?,
+        status: row.get(4)?,
+        payload_json: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+fn map_test_run_row(row: &Row<'_>) -> rusqlite::Result<TestRunRecord> {
+    Ok(TestRunRecord {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        task_id: row.get(2)?,
+        agent_run_id: row.get(3)?,
+        commit_sha: row.get(4)?,
+        branch: row.get(5)?,
+        status: row.get(6)?,
+        started_at: row.get(7)?,
+        duration_ms: row.get(8)?,
+        payload_json: row.get(9)?,
+    })
 }
 
 fn map_knowledge_proposal_row(row: &Row<'_>) -> rusqlite::Result<KnowledgeProposalRecord> {

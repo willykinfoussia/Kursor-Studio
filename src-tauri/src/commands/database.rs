@@ -332,3 +332,40 @@ pub fn db_knowledge_proposals_list_conversation(
 ) -> AppResult<Vec<KnowledgeProposalRecord>> {
     state.db.list_knowledge_proposals_for_conversation(&conversation_id)
 }
+
+#[tauri::command]
+pub fn db_test_strategy_upsert(record: TestStrategyRecord, state: State<'_, AppState>) -> AppResult<()> {
+    state.db.upsert_test_strategy(&record)
+}
+
+#[tauri::command]
+pub fn db_test_strategy_get(project_id: String, state: State<'_, AppState>) -> AppResult<Option<TestStrategyRecord>> {
+    state.db.get_test_strategy(&project_id)
+}
+
+#[tauri::command]
+pub fn db_user_cases_replace(
+    project_id: String,
+    cases: Vec<UserCaseRecord>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.db.replace_user_cases(&project_id, &cases)
+}
+
+#[tauri::command]
+pub fn db_user_cases_list(project_id: String, state: State<'_, AppState>) -> AppResult<Vec<UserCaseRecord>> {
+    state.db.list_user_cases(&project_id)
+}
+
+#[tauri::command]
+pub fn db_test_run_save(bundle: TestRunBundle, state: State<'_, AppState>) -> AppResult<()> {
+    state.db.save_test_run(&bundle)
+}
+
+#[tauri::command]
+pub fn db_test_monitoring_query(
+    query: TestMonitoringQuery,
+    state: State<'_, AppState>,
+) -> AppResult<TestMonitoringBundle> {
+    state.db.query_test_monitoring(&query)
+}

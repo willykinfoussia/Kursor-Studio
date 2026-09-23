@@ -1,8 +1,9 @@
 import { createGateway } from "@ai-sdk/gateway";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { generateText, jsonSchema, streamText, tool, type ModelMessage } from "ai";
+import { experimental_evaluate as evaluate, generateText, jsonSchema, streamText, tool, type JSONValue, type ModelMessage } from "ai";
 import { isTauri } from "../tauri/invoke";
-import type { AIService, CompleteTextOptions, CompleteTextResult } from "./AIService";
+import type { AIService, CompleteTextOptions, CompleteTextResult, EvaluateOptions, EvaluateResult } from "./AIService";
+import { PERMISSION_EVALUATION_MODEL } from "./permissionClassifier";
 import { AIProviderError } from "./errors";
 import { AI_GATEWAY_KEY, secretStore, type SecretStore } from "./SecretStore";
 import { toolRegistry, type AgentTool } from "./ToolRegistry";
@@ -188,6 +189,41 @@ export class VercelAIService implements AIService {
       usage: readUsage(result.usage),
     };
   }
+
+  async evaluate(input: EvaluateOptions): Promise<EvaluateResult> {
+    const apiKey = await this.secrets.get(AI_GATEWAY_KEY);
+    if (!apiKey) {
+      throw new AIProviderError("AI Gateway API key is missing.", { statusCode: 401 });
+    }
+    const gateway = createGateway({ apiKey, fetch: gatewayFetch });
+    const result = await evaluate({
+      model: gateway.evaluationModel(PERMISSION_EVALUATION_MODEL),
+      state: evaluationState(input.state),
+      questions: input.questions,
+      maxRetries: 0,
+      ...(input.signal ? { abortSignal: input.signal } : {}),
+      providerOptions: {
+        gateway: { zeroDataRetention: true },
+      },
+    });
+    const answers: EvaluateResult["answers"] = {};
+    for (const [id, answer] of Object.entries(result.answers)) {
+      if (answer.type !== "choice") continue;
+      answers[id] = {
+        type: "choice",
+        choice: answer.choice,
+        probabilities: answer.probabilities,
+      };
+    }
+    return { answers };
+  }
+}
+
+function evaluationState(state: EvaluateOptions["state"]): string | { [key: string]: JSONValue } | JSONValue[] {
+  if (typeof state === "string") return state;
+  if (Array.isArray(state)) return state as JSONValue[];
+  if (state && typeof state === "object") return state as { [key: string]: JSONValue };
+  return JSON.stringify(state ?? null);
 }
 
 function readUsage(usage: unknown): { inputTokens?: number; outputTokens?: number } | undefined {

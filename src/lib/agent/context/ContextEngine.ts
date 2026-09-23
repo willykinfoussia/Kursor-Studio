@@ -15,6 +15,7 @@ import type {
   AssembledContext,
   SourceCollectResult,
 } from "./types";
+import { atFileMentions } from "./tokens";
 import { budgetFromChars, mergeBudget } from "./budget";
 import { dropOrder, rankSlices } from "./rank";
 import { assembleMessages, assembleSystemPrompt, aggregateTrace, systemReservedTokens } from "./assemble";
@@ -200,8 +201,17 @@ function defaultRetrievers(): ContextRetrievers {
     rag: (projectId, query, limit) => ragService.search(projectId, query, limit),
     graph: async (_projectId, seeds, limit) => {
       const resolved = graphService.resolveContext(seeds, { maxFiles: limit });
+      const ordered: string[] = [];
+      const seen = new Set<string>();
+      for (const path of [...atFileMentions(seeds.query), ...resolved.files]) {
+        const key = path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "").replace(/\/+$/, "");
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        ordered.push(key);
+        if (ordered.length >= limit) break;
+      }
       const files: { path: string; content: string; score: number }[] = [];
-      for (const path of resolved.files) {
+      for (const path of ordered) {
         try {
           const content = await fileSystemService.readFile(path);
           files.push({ path, content, score: 1 });

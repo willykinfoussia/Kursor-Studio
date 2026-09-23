@@ -1,5 +1,5 @@
 import { CONTEXT_PRIORITIES, type ContextRetrievers, type ContextSource, type SourceCollectResult } from "../types";
-import { clipText, estimateTokens, mentionedPaths } from "../tokens";
+import { atFileMentions, clipText, estimateTokens, mentionedPaths } from "../tokens";
 
 const MAX_GRAPH_FILE_CHARS = 1_400;
 
@@ -15,7 +15,10 @@ export class GraphSource implements ContextSource {
     if (!snapshot.project) return { slices: [], skipReason: "no project" };
     if (!this.retrievers.graph) return { slices: [], skipReason: "graph retriever unavailable" };
 
+    const mentions = atFileMentions(snapshot.request);
+    const explicit = new Set(mentions.map(normalizeMentionPath));
     const paths = [
+      ...mentions,
       ...mentionedPaths(snapshot.request),
       ...snapshot.openFiles.map((file) => file.path),
       ...(snapshot.currentFile?.path ? [snapshot.currentFile.path] : []),
@@ -31,13 +34,16 @@ export class GraphSource implements ContextSource {
       const slices = results
         .filter((result) => result.path && result.path !== currentPath)
         .map((result, index) => {
-          const content = clipText(result.content, MAX_GRAPH_FILE_CHARS);
-          const text = `${result.path}:\n${content}`;
+          const mentioned = explicit.has(normalizeMentionPath(result.path));
+          const content = clipText(result.content, mentioned ? budget.maxFileChars : MAX_GRAPH_FILE_CHARS);
+          const text = mentioned
+            ? `Mentioned file: ${result.path}\n${content}`
+            : `${result.path}:\n${content}`;
           return {
             id: `graph:${index}:${result.path}`,
             source: this.id,
-            priority: CONTEXT_PRIORITIES.graph,
-            score: result.score,
+            priority: mentioned ? CONTEXT_PRIORITIES.relevantCode : CONTEXT_PRIORITIES.graph,
+            score: mentioned ? 2 : result.score,
             tokens: estimateTokens(text),
             text,
             meta: { path: result.path },
@@ -49,4 +55,8 @@ export class GraphSource implements ContextSource {
       return { slices: [], skipReason: "graph lookup failed" };
     }
   }
+}
+
+function normalizeMentionPath(path: string): string {
+  return path.replace(/\\/g, "/").trim().replace(/^\.\//, "").replace(/^\/+/, "").replace(/\/+$/, "");
 }

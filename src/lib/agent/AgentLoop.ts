@@ -33,14 +33,16 @@ import type {
   AIModel,
   AIRequestOptions,
 } from "./types";
-import { classifyPermission } from "./permissionClassifier";
+import { classifyPermission, PERMISSION_EVALUATION_MODEL } from "./permissionClassifier";
 import type { AgentHarnessHooks } from "./workflow/harness";
 import type { WorkflowSessionState } from "./workflow/sessionState";
 import { ensureUsingSuperpowers } from "./workflow/prompts";
 import { isReadOnlyInteraction } from "./modes";
 import { commandCheckRunner, formatForModel, VerificationEngine } from "./verification/VerificationEngine";
-import { MAX_VERIFICATION_ATTEMPTS, type CheckRunner } from "./verification/types";
+import { MAX_VERIFICATION_ATTEMPTS, type CheckRunner, type VerificationKinds } from "./verification/types";
 import { planVerificationRun } from "./verification/whenToRun";
+import { mergeTestingFailure, mergeTestingReport, testingLevelsFor, verificationKindsWithoutTest } from "../testing/bridge";
+import type { TestRun, TestStrategyDecision } from "../testing/domain";
 
 export interface AgentLoopDependencies {
   aiService: AIService;
@@ -50,6 +52,14 @@ export interface AgentLoopDependencies {
   gate?: PermissionGate;
   verification?: VerificationEngine;
   checkRunner?: CheckRunner;
+  testing?: {
+    run(input: {
+      levels: Array<"unit" | "integration" | "e2e">;
+      requestId: string;
+      signal?: AbortSignal;
+      runner: CheckRunner;
+    }): Promise<{ run: TestRun; strategy: TestStrategyDecision } | null>;
+  };
 }
 
 export interface AgentLoopRunOptions {
@@ -98,6 +108,7 @@ export class AgentLoop {
   private readonly defaultGate: PermissionGate | undefined;
   private readonly verification: VerificationEngine;
   private readonly checkRunner?: CheckRunner;
+  private readonly testing?: AgentLoopDependencies["testing"];
 
   constructor(dependencies: AgentLoopDependencies) {
     this.aiService = dependencies.aiService;
@@ -107,6 +118,7 @@ export class AgentLoop {
     this.defaultGate = dependencies.gate;
     this.verification = dependencies.verification ?? new VerificationEngine();
     this.checkRunner = dependencies.checkRunner;
+    this.testing = dependencies.testing;
   }
 
   async run(options: AgentLoopRunOptions): Promise<AgentLoopResult> {
@@ -156,12 +168,11 @@ export class AgentLoop {
           execution.status = "waiting_approval";
           emit({ type: "permission-required", ...request });
         },
-        classifier: this.aiService.completeText
+        classifier: this.aiService.evaluate
           ? async (input) => {
-            const model = options.models[0]?.id ?? "";
             this.metrics.request("LLM-PERM");
-            emit({ type: "llm-started", requestId: execution.requestId, kind: "perm", model });
-            return classifyPermission(this.aiService, { ...input, model }, options.signal);
+            emit({ type: "llm-started", requestId: execution.requestId, kind: "perm", model: PERMISSION_EVALUATION_MODEL });
+            return classifyPermission(this.aiService, input, options.signal);
           }
           : undefined,
         onClassifier: (event) => {
@@ -539,6 +550,8 @@ export class AgentLoop {
     if (!planned) return input.outcome;
 
     const runner = this.checkRunner ?? commandCheckRunner((command) => input.executor.run("run_command", { command }));
+    const levels = this.testing ? testingLevelsFor(planned) : null;
+    const narrowed = levels ? verificationKindsWithoutTest(planned) : null;
     let outcome = input.outcome;
 
     for (let attempt = 1; attempt <= MAX_VERIFICATION_ATTEMPTS; attempt += 1) {
@@ -552,11 +565,12 @@ export class AgentLoop {
         trigger: "agent",
       });
 
-      const report = await this.verification.run({
+      const harness = await this.verification.run({
         runner,
         attempt,
         signal: input.signal,
-        kinds: planned.kinds,
+        kinds: narrowed ? narrowed.kinds as VerificationKinds : planned.kinds,
+        customNames: narrowed?.customNames,
         onCheckStart: (check) => {
           input.emit({
             type: "verification-check-started",
@@ -575,6 +589,22 @@ export class AgentLoop {
           });
         },
       });
+      let report = harness;
+      if (levels && this.testing) {
+        try {
+          const tested = await this.testing.run({
+            levels,
+            requestId: input.execution.requestId,
+            signal: input.signal,
+            runner,
+          });
+          report = tested
+            ? mergeTestingReport(harness, tested.run, tested.strategy, levels)
+            : harness;
+        } catch (error) {
+          report = mergeTestingFailure(harness, error);
+        }
+      }
       input.execution.finishVerifyStep(report.ok);
       input.emit({ type: "step-finished", stepId: step.id, index: step.index, kind: "verify" });
       input.emit({

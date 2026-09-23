@@ -17,6 +17,11 @@ import type {
   AiChangeSetRecord,
   AiReviewDecisionRecord,
   KnowledgeProposalRecord,
+  TestMonitoringBundle,
+  TestMonitoringQuery,
+  TestRunBundle,
+  TestStrategyRecord,
+  UserCaseRecord,
 } from "../storage/types";
 
 export const databaseApi = {
@@ -98,4 +103,15 @@ export const databaseApi = {
     invokeCommand<KnowledgeProposalRecord[]>("db_knowledge_proposals_list", { projectId, status }, []),
   knowledgeProposalListByConversation: (conversationId: string) =>
     invokeCommand<KnowledgeProposalRecord[]>("db_knowledge_proposals_list_conversation", { conversationId }, []),
+  testStrategyUpsert: (record: TestStrategyRecord) =>
+    invokeCommand<void>("db_test_strategy_upsert", { record }),
+  testStrategyGet: (projectId: string) =>
+    invokeCommand<TestStrategyRecord | null>("db_test_strategy_get", { projectId }, null),
+  userCasesReplace: (projectId: string, cases: UserCaseRecord[]) =>
+    invokeCommand<void>("db_user_cases_replace", { projectId, cases }),
+  userCasesList: (projectId: string) =>
+    invokeCommand<UserCaseRecord[]>("db_user_cases_list", { projectId }, []),
+  testRunSave: (bundle: TestRunBundle) => invokeCommand<void>("db_test_run_save", { bundle }),
+  testMonitoringQuery: (query: TestMonitoringQuery) =>
+    invokeCommand<TestMonitoringBundle>("db_test_monitoring_query", { query }, { runs: [], userCases: [], strategy: null }),
 };

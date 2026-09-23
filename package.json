@@ -12,7 +12,7 @@
     "agent:evaluate": "vite-node src/lib/agent/eval/cli.ts"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "^4.0.78",
+    "@ai-sdk/gateway": "^4.0.90",
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
@@ -21,7 +21,7 @@
     "@tauri-apps/plugin-shell": "^2",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "ai": "^7.0.97",
+    "ai": "^7.0.112",
     "lucide-react": "^1.44.0",
     "mermaid": "^11.6.0",
     "@xyflow/react": "^12.8.4",

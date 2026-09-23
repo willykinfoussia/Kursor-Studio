@@ -64,8 +64,10 @@ import {
   projectVerifyFiles,
 } from "./verification";
 import type { VerificationRunInput } from "./verification/types";
+import { TestingEngine } from "../testing/engine";
+import { createTestingStore } from "../testing/store";
 import { ToolExecutor } from "./ToolExecutor";
-import { classifyPermission } from "./permissionClassifier";
+import { classifyPermission, PERMISSION_EVALUATION_MODEL } from "./permissionClassifier";
 import {
   RecoveryManager,
   nativeRecoveryGit,
@@ -339,6 +341,29 @@ export class AgentRuntime {
       registry: this.registry,
       verification: this.verificationEngine,
       checkRunner: dependencies.checkRunner,
+      testing: {
+        run: async (input) => {
+          const projectId = this.getProjectId();
+          if (!projectId) return null;
+          const store = createTestingStore();
+          const engine = new TestingEngine({
+            files: projectVerifyFiles(),
+            runner: input.runner,
+            store,
+            ai: dependencies.aiService,
+            cwd: this.getProjectRoot() ?? "",
+          });
+          const run = await engine.runLevels({
+            projectId,
+            levels: input.levels,
+            taskId: this.activeTaskId,
+            agentRunId: this.lastRunId,
+            signal: input.signal,
+          });
+          const strategy = await store.getStrategy(projectId);
+          return strategy ? { run, strategy } : null;
+        },
+      },
     });
     this.aiService = dependencies.aiService;
     this.orchestrator = new AgentOrchestrator({
@@ -951,12 +976,11 @@ export class AgentRuntime {
           this.setStatus("waiting_approval");
           this.emit({ type: "permission-required", ...request });
         },
-        classifier: this.aiService.completeText
+        classifier: this.aiService.evaluate
           ? async (input) => {
-            const model = this.orderedModels(settings)[0]?.id ?? "";
             this.metrics.request("LLM-PERM");
-            this.emit({ type: "llm-started", requestId, kind: "perm", model });
-            return classifyPermission(this.aiService, { ...input, model }, signal);
+            this.emit({ type: "llm-started", requestId, kind: "perm", model: PERMISSION_EVALUATION_MODEL });
+            return classifyPermission(this.aiService, input, signal);
           }
           : undefined,
         onClassifier: (event) => {

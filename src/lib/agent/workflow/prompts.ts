@@ -56,14 +56,6 @@ export function ensureUsingSuperpowers(systemPrompt: string, injectSubagent: boo
   return `${body}\n\n${systemPrompt}`;
 }
 
-export const PERMISSION_CLASSIFIER_SYSTEM = `You are a permission classifier for a local desktop coding agent.
-Decide whether a single tool call is safe to auto-allow.
-Return JSON only: {"decision":"allow"|"deny"|"ask_human","reason":"short"}.
-Allow routine project reads and scoped writes inside the workspace.
-Allow routine in-project package and runtime commands: npm, npx, node, pnpm, yarn, cargo, python, pip. Prefer allow or ask_human for those — never deny them.
-Deny path traversal, secret reads, destructive git, or commands that affect the OS (sudo, shutdown, disk format).
-Ask the human when unsure. Do not explain outside JSON.`;
-
 export const COMPACT_SYSTEM = `Summarize the conversation for a coding agent so work can continue.
 Preserve: user goal, designApproved/plan path, designNotes/designBrief, files touched, decisions, open review findings, agent branch name and base.
 Do not invent tool results. No mutating instructions.`;

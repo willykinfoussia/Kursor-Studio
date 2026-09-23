@@ -1,5 +1,5 @@
 import { fileName } from "../filesystem/pathUtils";
-import { mentionedPaths } from "../agent/context/tokens";
+import { atFileMentions, mentionedPaths } from "../agent/context/tokens";
 import { fileBasename, normalizeGraphPath } from "./ids";
 import { graphTokens } from "./tokenize";
 import type { ProjectGraph } from "./ProjectGraph";
@@ -34,11 +34,17 @@ export class ContextResolver {
 
   seedPaths(graph: ProjectGraph, seeds: ResolveSeeds): string[] {
     const ordered: string[] = [];
+    const query = seeds.query?.trim() ?? "";
+    if (query) {
+      for (const mentioned of atFileMentions(query)) {
+        const node = graph.getNode(mentioned);
+        ordered.push(node?.path ?? normalizeGraphPath(mentioned));
+      }
+    }
     for (const path of seeds.paths ?? []) {
       const node = graph.getNode(path);
       if (node) ordered.push(node.path);
     }
-    const query = seeds.query?.trim() ?? "";
     if (query) {
       for (const mentioned of mentionedPaths(query)) {
         const node = graph.getNode(mentioned);

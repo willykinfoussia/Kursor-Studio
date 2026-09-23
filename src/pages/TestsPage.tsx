@@ -12,8 +12,8 @@ import { VerificationSuite } from "../components/verification/VerificationSuite"
 import { VerificationDetails } from "../components/verification/VerificationDetails";
 import { VerificationHistory } from "../components/verification/VerificationHistory";
 import { VerificationGaps } from "../components/verification/VerificationGaps";
-import { CoveragePanel } from "../components/verification/CoveragePanel";
 import { VerifiedFunctionality } from "../components/verification/VerifiedFunctionality";
+import { TestMonitoring } from "../components/testing/TestMonitoring";
 import { AddCheckDialog, CheckEditor } from "../components/verification/CheckEditor";
 import type { SuiteItem, SuiteStatus } from "../lib/agent/verification";
 
@@ -133,7 +133,7 @@ export function TestsPage() {
               />
               <VerificationGaps gaps={gaps} onConfigure={() => setEditorOpen(true)} />
               <VerificationHistory history={history} />
-              <CoveragePanel />
+              <TestMonitoring projectId={projectId} />
               <VerifiedFunctionality />
             </div>
             {detailsOpen && (

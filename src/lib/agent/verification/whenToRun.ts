@@ -4,6 +4,7 @@ import type { ToolCall } from "../types";
 import type { CheckKind } from "./types";
 import { sessionHasCompletedPlan } from "../workflow/gates";
 import type { WorkflowSessionState } from "../workflow/sessionState";
+export { testingLevelsFor } from "../../testing/bridge";
 
 export type VerificationKinds = Array<CheckKind | "files">;
 

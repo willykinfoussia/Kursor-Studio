@@ -437,3 +437,111 @@ pub struct KnowledgeProposalRecord {
     pub created_at: i64,
     pub updated_at: i64,
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestStrategyRecord {
+    pub project_id: String,
+    pub payload_json: String,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserCaseRecord {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub priority: String,
+    pub status: String,
+    pub payload_json: String,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRunRecord {
+    pub id: String,
+    pub project_id: String,
+    pub task_id: Option<String>,
+    pub agent_run_id: Option<String>,
+    pub commit_sha: Option<String>,
+    pub branch: Option<String>,
+    pub status: String,
+    pub started_at: i64,
+    pub duration_ms: Option<i64>,
+    pub payload_json: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestResultRecord {
+    pub id: String,
+    pub run_id: String,
+    pub project_id: String,
+    pub task_id: Option<String>,
+    pub user_case_id: Option<String>,
+    pub name: String,
+    pub test_type: String,
+    pub runner: String,
+    pub status: String,
+    pub duration_ms: Option<i64>,
+    pub error: Option<String>,
+    pub file: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageSnapshotRecord {
+    pub id: String,
+    pub run_id: String,
+    pub project_id: String,
+    pub lines: Option<f64>,
+    pub branches: Option<f64>,
+    pub functions: Option<f64>,
+    pub statements: Option<f64>,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestArtifactRecord {
+    pub id: String,
+    pub run_id: String,
+    pub kind: String,
+    pub path: String,
+    pub label: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRunBundle {
+    pub run: TestRunRecord,
+    pub results: Vec<TestResultRecord>,
+    #[serde(default)]
+    pub coverage: Option<CoverageSnapshotRecord>,
+    pub artifacts: Vec<TestArtifactRecord>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestMonitoringQuery {
+    pub project_id: String,
+    pub branch: Option<String>,
+    pub commit_sha: Option<String>,
+    pub task_id: Option<String>,
+    pub status: Option<String>,
+    pub from_ms: Option<i64>,
+    pub to_ms: Option<i64>,
+    pub test_type: Option<String>,
+    pub runner: Option<String>,
+    pub user_case_id: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestMonitoringBundle {
+    pub runs: Vec<TestRunRecord>,
+    pub user_cases: Vec<UserCaseRecord>,
+    pub strategy: Option<TestStrategyRecord>,
+}
