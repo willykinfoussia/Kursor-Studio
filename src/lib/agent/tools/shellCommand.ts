@@ -1,11 +1,11 @@
 export type ShellKind = "run" | "start";
 
 const SHELL_MESSAGE =
-  "run_command uses Windows cmd, not bash. One command per call; no pipes, &&, ;, or 2>&1. Use dir or list_files instead of ls/pwd.";
+  "run_command uses Windows cmd, not bash. One command per call; no pipes, &&, ;, or output redirection (>, 2>&1). Use dir or list_files instead of ls/pwd.";
 const DEV_SERVER_MESSAGE =
-  "Long-running servers (npm run dev, pnpm dev, vite, next dev) must use start_process.";
+  "Long-running servers (npm run dev, pnpm dev, vite, next dev) must use start_process, then read_process with the jobId.";
 const LOCALHOST_MESSAGE =
-  "Do not curl localhost from run_command. Use start_process and read that job.";
+  "Do not curl localhost from run_command. Use start_process, then read_process with the jobId.";
 
 export type ShellCommandCheck =
   | { ok: true }
@@ -24,6 +24,11 @@ function isLongRunningDevServer(command: string): boolean {
   return false;
 }
 
+function hasOutputRedirection(exposed: string): boolean {
+  const stripped = exposed.replace(/2>&1/g, " ").replace(/[12]>/g, " ");
+  return stripped.includes(">");
+}
+
 function isLocalhostProbe(command: string): boolean {
   const body = withoutQuotes(command);
   return /\b(?:curl|wget)\b/i.test(body) && /\b(?:localhost|127\.0\.0\.1)\b/i.test(body);
@@ -33,7 +38,7 @@ export function assertKursorShellCommand(command: string, kind: ShellKind): Shel
   const trimmed = command.trim();
   if (!trimmed) return { ok: false, code: "invalid_input", message: "A command is required." };
   const exposed = withoutQuotes(trimmed);
-  if (/[;&|]/.test(exposed) || /(?:^|\s)(?:2>&1|2>|1>|>>|>\/dev\/null)/.test(exposed)) {
+  if (/[;&|]/.test(exposed) || /(?:^|\s)(?:2>&1|2>|1>|>>|>\/dev\/null)/.test(exposed) || hasOutputRedirection(exposed)) {
     return { ok: false, code: "invalid_shell", message: SHELL_MESSAGE };
   }
   if (/\b(?:rm\s+-rf|head\b|tail\b|pwd\b|ls\b|sleep\b)\b/i.test(exposed)) {

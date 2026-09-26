@@ -14,6 +14,8 @@ describe("assertKursorShellCommand", () => {
     expect(assertKursorShellCommand("curl -s http://example.com | head", "run").ok).toBe(false);
     expect(assertKursorShellCommand("ls", "run").code).toBe("invalid_shell");
     expect(assertKursorShellCommand("NODE_OPTIONS=--foo node x", "run").ok).toBe(false);
+    expect(assertKursorShellCommand("npm run dev > dev.log", "start").code).toBe("invalid_shell");
+    expect(assertKursorShellCommand("node --import tsx src/index.ts > dev.log 2>&1", "start").code).toBe("invalid_shell");
   });
 
   it("rejects long-running dev servers and localhost curl on run_command", () => {

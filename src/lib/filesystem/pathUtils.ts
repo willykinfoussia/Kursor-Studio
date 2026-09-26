@@ -13,31 +13,44 @@ export function normalizeRelativePath(relativePath: string) {
   return relativePath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
 }
 
-export function resolveProjectPath(projectRoot: string, relativePath: string): string {
-  if (!projectRoot.trim()) {
+function strippedSlashPath(value: string) {
+  return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function assertRelativeSegments(normalized: string): string {
+  if (!normalized || normalized === ".") return "";
+  if (normalized.startsWith("/") || normalized.startsWith("~") || isWindowsAbsolute(normalized)) {
     throw new PathOutsideProjectError();
   }
-  const normalized = normalizeRelativePath(relativePath.trim());
-  if (!normalized || normalized === ".") {
-    return projectRoot.replace(/\\/g, "/");
-  }
-  if (
-    normalized.startsWith("/") ||
-    normalized.startsWith("~") ||
-    isWindowsAbsolute(normalized)
-  ) {
-    throw new PathOutsideProjectError();
-  }
-  const parts = normalized.split("/").filter((part: string) => part && part !== ".");
+  const parts = normalized.split("/").filter((part) => part && part !== ".");
   for (const part of parts) {
-    if (part === "..") {
-      throw new PathOutsideProjectError();
-    }
+    if (part === "..") throw new PathOutsideProjectError();
   }
-  if (parts.length === 0) {
-    return projectRoot.replace(/\\/g, "/");
+  return parts.join("/");
+}
+
+/** Relative path inside projectRoot. Absolute inputs are accepted only when they are the root or strictly inside it. */
+export function toProjectRelative(projectRoot: string, inputPath: string): string {
+  const root = strippedSlashPath(projectRoot);
+  if (!root) throw new PathOutsideProjectError();
+  const raw = strippedSlashPath(inputPath);
+  if (!raw || raw === ".") return "";
+  if (raw.startsWith("~")) throw new PathOutsideProjectError();
+  if (isWindowsAbsolute(raw) || raw.startsWith("/")) {
+    const rootKey = root.toLowerCase();
+    const rawKey = raw.toLowerCase();
+    if (rawKey === rootKey) return "";
+    if (!rawKey.startsWith(`${rootKey}/`)) throw new PathOutsideProjectError();
+    return assertRelativeSegments(raw.slice(root.length).replace(/^\//, ""));
   }
-  return `${projectRoot.replace(/\\/g, "/")}/${parts.join("/")}`;
+  return assertRelativeSegments(normalizeRelativePath(inputPath.trim()));
+}
+
+export function resolveProjectPath(projectRoot: string, relativePath: string): string {
+  const relative = toProjectRelative(projectRoot, relativePath);
+  const root = strippedSlashPath(projectRoot);
+  if (!relative) return root;
+  return `${root}/${relative}`;
 }
 
 export function parentRelativePath(relativePath: string) {

@@ -125,8 +125,8 @@ function agentVerifyPlan(path: string | null | undefined): string {
   return `The project plan at ${where} is complete. Do not brainstorm. Do not call create_plan.
 You MUST load_skill verification-before-completion first.
 Before any run_command or start_process you MUST load_skill using-kursor-shell. Commands run in Windows cmd, not bash — one command per call, no pipes.
-After verification is green, you MUST load_skill finishing-a-development-branch and call finish_development_branch with no choice so the human can pick merge, pr, keep, or discard.
-If merge returns conflicts, edit the conflict markers, then call finish_development_branch with choice merge again. Do not stop after tests without finishing the branch.`;
+After verification is green, you MUST load_skill finishing-a-development-branch and call finish_development_branch. It merges the feature branch into the base, then pushes the base once the merge is complete.
+If merge returns conflicts, edit the conflict markers, then call finish_development_branch again. Do not push until the merge finishes. Do not stop after tests without finishing the branch.`;
 }
 
 function staleApprovedDiskPlan(session?: ModeOverlaySession | null): boolean {

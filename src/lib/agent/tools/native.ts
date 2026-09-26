@@ -7,6 +7,15 @@ export interface AgentProcessService {
     truncated?: boolean;
   }>;
   start(input: { command: string; cwd?: string }): Promise<{ jobId: string; command: string }>;
+  output(jobId: string): Promise<{
+    jobId: string;
+    command: string;
+    stdout: string;
+    stderr: string;
+    running: boolean;
+    exitCode: number | null;
+    truncated: boolean;
+  }>;
   kill(jobId: string): Promise<void>;
 }
 

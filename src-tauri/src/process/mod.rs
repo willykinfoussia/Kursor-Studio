@@ -5,7 +5,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -32,6 +32,61 @@ pub struct ProcessResult {
 pub struct ProcessJob {
     pub job_id: String,
     pub command: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessOutput {
+    pub job_id: String,
+    pub command: String,
+    pub stdout: String,
+    pub stderr: String,
+    pub running: bool,
+    pub exit_code: Option<i32>,
+    pub truncated: bool,
+}
+
+struct OutputTail {
+    text: String,
+    truncated: bool,
+}
+
+struct ManagedJob {
+    child: Child,
+    command: String,
+    stdout: Arc<Mutex<OutputTail>>,
+    stderr: Arc<Mutex<OutputTail>>,
+}
+
+fn push_tail(buffer: &Arc<Mutex<OutputTail>>, chunk: &str, max_chars: usize) {
+    let mut guard = buffer.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard.text.push_str(chunk);
+    let count = guard.text.chars().count();
+    if count > max_chars {
+        let skip = count - max_chars;
+        guard.text = guard.text.chars().skip(skip).collect();
+        guard.truncated = true;
+    }
+}
+
+fn snapshot_tail(buffer: &Arc<Mutex<OutputTail>>) -> (String, bool) {
+    let guard = buffer.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    (guard.text.clone(), guard.truncated)
+}
+
+fn spawn_reader(mut pipe: impl Read + Send + 'static, buffer: Arc<Mutex<OutputTail>>) {
+    thread::spawn(move || {
+        let mut chunk = [0u8; 4096];
+        loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let text = String::from_utf8_lossy(&chunk[..n]);
+                    push_tail(&buffer, &text, MAX_OUTPUT_CHARS);
+                }
+            }
+        }
+    });
 }
 
 pub struct CommandPolicy;
@@ -288,7 +343,7 @@ pub fn run_command(
 
 #[derive(Default)]
 pub struct ProcessManager {
-    jobs: Mutex<HashMap<String, Child>>,
+    jobs: Mutex<HashMap<String, ManagedJob>>,
 }
 
 impl ProcessManager {
@@ -297,25 +352,64 @@ impl ProcessManager {
         if is_denied_command(&command, &program, &args) {
             return Err(AppError::CommandDenied);
         }
-        let child = spawn_command(&program, &args, cwd, false)?;
+        let mut child = spawn_command(&program, &args, cwd, true)?;
+        let stdout = Arc::new(Mutex::new(OutputTail { text: String::new(), truncated: false }));
+        let stderr = Arc::new(Mutex::new(OutputTail { text: String::new(), truncated: false }));
+        if let Some(pipe) = child.stdout.take() {
+            spawn_reader(pipe, Arc::clone(&stdout));
+        }
+        if let Some(pipe) = child.stderr.take() {
+            spawn_reader(pipe, Arc::clone(&stderr));
+        }
         let job_id = uuid::Uuid::new_v4().to_string();
         self.jobs
             .lock()
             .map_err(|_| AppError::InvalidRequest("Process state is unavailable.".to_owned()))?
-            .insert(job_id.clone(), child);
+            .insert(job_id.clone(), ManagedJob {
+                child,
+                command: command.clone(),
+                stdout,
+                stderr,
+            });
         Ok(ProcessJob { job_id, command })
     }
 
-    pub fn kill(&self, job_id: &str) -> AppResult<()> {
+    pub fn output(&self, job_id: &str) -> AppResult<ProcessOutput> {
         let mut jobs = self
             .jobs
             .lock()
             .map_err(|_| AppError::InvalidRequest("Process state is unavailable.".to_owned()))?;
-        let mut child = jobs
-            .remove(job_id)
+        let job = jobs
+            .get_mut(job_id)
             .ok_or_else(|| AppError::InvalidRequest("Unknown process job.".to_owned()))?;
-        let _ = child.kill();
-        let _ = child.wait();
+        let status = job
+            .child
+            .try_wait()
+            .map_err(|error| AppError::Io(error.to_string()))?;
+        let (stdout, stdout_cut) = snapshot_tail(&job.stdout);
+        let (stderr, stderr_cut) = snapshot_tail(&job.stderr);
+        Ok(ProcessOutput {
+            job_id: job_id.to_owned(),
+            command: job.command.clone(),
+            stdout,
+            stderr,
+            running: status.is_none(),
+            exit_code: status.and_then(|value| value.code()),
+            truncated: stdout_cut || stderr_cut,
+        })
+    }
+
+    pub fn kill(&self, job_id: &str) -> AppResult<()> {
+        let mut job = {
+            let mut jobs = self
+                .jobs
+                .lock()
+                .map_err(|_| AppError::InvalidRequest("Process state is unavailable.".to_owned()))?;
+            jobs.remove(job_id)
+                .ok_or_else(|| AppError::InvalidRequest("Unknown process job.".to_owned()))?
+        };
+        let _ = job.child.kill();
+        let _ = job.child.wait();
         Ok(())
     }
 }
@@ -334,6 +428,8 @@ pub fn resolve_cwd(root: &Path, cwd: Option<&str>) -> AppResult<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::AppError;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn splits_quoted_commands() {
@@ -348,6 +444,22 @@ mod tests {
         assert!(is_denied_command("rm -rf /", "rm", &["-rf".into(), "/".into()]));
         assert!(is_denied_command("bash", "bash", &[]));
         assert!(!is_denied_command("pnpm test", "pnpm", &["test".into()]));
+    }
+
+    #[test]
+    fn output_tail_keeps_the_end() {
+        let buffer = Arc::new(Mutex::new(OutputTail { text: String::new(), truncated: false }));
+        push_tail(&buffer, "abcdefghij", 4);
+        let guard = buffer.lock().unwrap();
+        assert_eq!(guard.text, "ghij");
+        assert!(guard.truncated);
+    }
+
+    #[test]
+    fn unknown_job_output_is_an_error() {
+        let manager = ProcessManager::default();
+        let err = manager.output("missing").unwrap_err();
+        assert!(matches!(err, AppError::InvalidRequest(message) if message == "Unknown process job."));
     }
 
     #[cfg(windows)]

@@ -34,7 +34,7 @@ export interface GitBranchResult {
 }
 
 export interface FinishBranchInput {
-  choice: "merge" | "pr" | "keep" | "discard";
+  choice: "merge";
 }
 
 export interface FinishBranchResult {

@@ -31,7 +31,8 @@ The tool writes `.kursor/plans/<slug>.plan.md`. Never use `write_file` or `creat
 - A mermaid diagram (` ```mermaid ` fence). Add a data-flow diagram when the feature has APIs, events, or shared state
 - Exact file paths in backticks
 - Short **contract** excerpts (existing types, exports, events — typically 5–20 lines). Not the full implementation to paste
-- A numbered section per todo (`## 1. Title` matching the todo text) with files and **Test** / **Verification** / **Done when** / **Vérif**
+- Strategy headings stay unnumbered (`## Problem`, `## Architecture`, `## Architecture impact`). Only todos use `## 1. Title`, with the same title as the todo.
+- That todo section names files and includes **Test:**, **Verification:**, **Done when:**, or **Vérif:** (colon inside the bold or immediately after it, including `**Verification / Done when**:`) or a `### Verification` heading inside the section.
 
 Do not skip `load_skill` `writing-plans`. Do not call `create_plan` until this skill is loaded.
 
@@ -43,12 +44,12 @@ If the spec covers multiple independent subsystems, it should have been broken i
 
 ## Document order
 
-Use this order. Headings may be English or French.
+Use this order. Headings may be English or French. Do **not** prefix strategy headings with a number. Only the task sections at the end use `## 1.`, `## 2.`, and so on, with the same title as each todo.
 
-1. **Objective** — one sentence
-2. **Problem** — why it matters, expected behavior, constraints, success criteria
+1. **Objective** — one sentence (`**Objective:**`, not `## 1. Objective`)
+2. **Problem** — why it matters, expected behavior, constraints, success criteria (`## Problem`)
 3. **Current architecture** — what already exists (from explore)
-4. **Architecture impact** — KEEP / EXTEND / MODIFY / CREATE / DEPRECATE + reason
+4. **Architecture impact** — KEEP / EXTEND / MODIFY / CREATE / DEPRECATE + reason. A greenfield repo still names **KEEP** and **EXTEND** (for example KEEP `.kursor/`, EXTEND none). CREATE alone is rejected.
 5. **Invariants** — INV-00n rules that must never be violated, **before** tasks
 6. **Architecture + happy path** — 2–3 paragraphs, then mermaid (session → … → done)
 7. **Contracts** — short TypeScript/interface excerpts only
@@ -170,6 +171,8 @@ What happens if this step fails; rollback or stop.
 ### Verification
 Run `pnpm test` / expected UI or event.
 ````
+
+`**Test:**`, `**Verification**:`, and `**Verification / Done when**:` are accepted in place of the `### Verification` / `### Done when` headings. Put that label inside the task section.
 
 ## No Placeholders
 

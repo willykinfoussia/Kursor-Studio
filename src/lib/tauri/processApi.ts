@@ -1,4 +1,4 @@
-import type { ProcessJob, ProcessResult } from "../../types/tauri";
+import type { ProcessJob, ProcessOutput, ProcessResult } from "../../types/tauri";
 import { invokeCommand } from "./invoke";
 
 export const processApi = {
@@ -7,5 +7,6 @@ export const processApi = {
     invokeCommand<ProcessResult>("process_run", { command, cwd, timeoutMs }),
   start: (command: string, cwd?: string) =>
     invokeCommand<ProcessJob>("process_start", { command, cwd }),
+  output: (jobId: string) => invokeCommand<ProcessOutput>("process_output", { jobId }),
   kill: (jobId: string) => invokeCommand<void>("process_kill", { jobId }),
 };

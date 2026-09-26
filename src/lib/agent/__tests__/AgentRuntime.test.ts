@@ -6,9 +6,8 @@ import { AIProviderError, AIProviderTimeoutError } from "../errors";
 import { UsageMetrics } from "../metrics";
 import { RecoveryManager } from "../recovery";
 import type { AgentEvent, AgentMessage, AgentStream, AIRequestOptions } from "../types";
-import { gitApi, githubApi } from "../../tauri/githubApi";
+import { gitApi } from "../../tauri/githubApi";
 import { projectApi } from "../../tauri/projectApi";
-import { useProjectStore } from "../../../stores/projectStore";
 
 const MEDIUM_GOAL = "ajoute une fonction de filtrage dans le composant TodoList";
 
@@ -291,46 +290,6 @@ describe("AgentRuntime", () => {
     expect(recovery.checkpoint?.id).toBe("cp-1");
   });
 
-  it("pushes the branch before creating a pull request", async () => {
-    const push = vi.spyOn(gitApi, "push").mockResolvedValue(undefined);
-    const createPull = vi.spyOn(githubApi, "createPull").mockResolvedValue({
-      id: "1",
-      number: 1,
-      title: "Kursor: feat",
-      state: "open",
-      htmlUrl: "https://github.com/acme/app/pull/1",
-      head: "feat",
-      base: "develop",
-    });
-    const previous = useProjectStore.getState().currentProject;
-    useProjectStore.setState({
-      currentProject: {
-        id: "p1",
-        name: "app",
-        rootPath: "C:/proj",
-        githubOwner: "acme",
-        githubRepo: "app",
-      } as never,
-    });
-    const runtime = createRuntime({
-      streamChat: vi.fn(async () => textStream("ok")),
-    });
-    runtime.workflowSession.agentBranch = { name: "feat", base: "develop" };
-    try {
-      const result = await (runtime as unknown as {
-        finishBranch: (input: { choice: "pr" }) => Promise<{ message: string }>;
-      }).finishBranch({ choice: "pr" });
-      expect(push).toHaveBeenCalled();
-      expect(createPull).toHaveBeenCalledWith("acme", "app", "Kursor: feat", "feat", "develop");
-      expect(push.mock.invocationCallOrder[0]).toBeLessThan(createPull.mock.invocationCallOrder[0]);
-      expect(result.message).toContain("pr");
-    } finally {
-      useProjectStore.setState({ currentProject: previous });
-      push.mockRestore();
-      createPull.mockRestore();
-    }
-  });
-
   it("checkouts the base branch then merges the agent branch", async () => {
     const status = vi.spyOn(projectApi, "gitStatus").mockResolvedValue({
       branch: "feat",
@@ -346,6 +305,7 @@ describe("AgentRuntime", () => {
       message: "Merged feat.",
     });
     const del = vi.spyOn(gitApi, "deleteBranch").mockResolvedValue(undefined);
+    const push = vi.spyOn(gitApi, "push").mockResolvedValue(undefined);
     const runtime = createRuntime({ streamChat: vi.fn(async () => textStream("ok")) });
     runtime.workflowSession.agentBranch = { name: "feat", base: "main" };
     try {
@@ -355,7 +315,10 @@ describe("AgentRuntime", () => {
       expect(checkout).toHaveBeenCalledWith("main");
       expect(merge).toHaveBeenCalledWith("feat");
       expect(del).toHaveBeenCalledWith("feat", false);
+      expect(push).toHaveBeenCalled();
+      expect(del.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0]);
       expect(result.merged).toBe(true);
+      expect(result.message).toContain("pushed");
       expect(runtime.workflowSession.agentBranch).toBeNull();
     } finally {
       status.mockRestore();
@@ -363,6 +326,7 @@ describe("AgentRuntime", () => {
       mergeContinue.mockRestore();
       merge.mockRestore();
       del.mockRestore();
+      push.mockRestore();
     }
   });
 
@@ -381,6 +345,7 @@ describe("AgentRuntime", () => {
       message: "Merge conflicts in src/App.tsx.",
     });
     const del = vi.spyOn(gitApi, "deleteBranch").mockResolvedValue(undefined);
+    const push = vi.spyOn(gitApi, "push").mockResolvedValue(undefined);
     const runtime = createRuntime({ streamChat: vi.fn(async () => textStream("ok")) });
     runtime.workflowSession.agentBranch = { name: "feat", base: "main" };
     const events: AgentEvent[] = [];
@@ -391,6 +356,7 @@ describe("AgentRuntime", () => {
       }).finishBranch({ choice: "merge" });
       expect(result.conflicts).toEqual(["src/App.tsx"]);
       expect(del).not.toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalled();
       expect(runtime.workflowSession.agentBranch).toEqual({ name: "feat", base: "main" });
       expect(events.some((event) => event.type === "merge-conflicts")).toBe(true);
     } finally {
@@ -399,6 +365,7 @@ describe("AgentRuntime", () => {
       checkout.mockRestore();
       merge.mockRestore();
       del.mockRestore();
+      push.mockRestore();
     }
   });
 
@@ -417,6 +384,7 @@ describe("AgentRuntime", () => {
       message: "Merged feat.",
     });
     const del = vi.spyOn(gitApi, "deleteBranch").mockResolvedValue(undefined);
+    const push = vi.spyOn(gitApi, "push").mockResolvedValue(undefined);
     const runtime = createRuntime({ streamChat: vi.fn(async () => textStream("ok")) });
     runtime.workflowSession.agentBranch = { name: "feat", base: "main" };
     try {
@@ -427,34 +395,15 @@ describe("AgentRuntime", () => {
       expect(checkout).not.toHaveBeenCalled();
       expect(merge).not.toHaveBeenCalled();
       expect(del).toHaveBeenCalledWith("feat", false);
+      expect(push).toHaveBeenCalled();
       expect(result.merged).toBe(true);
+      expect(result.message).toContain("pushed");
     } finally {
       mergeContinue.mockRestore();
       checkout.mockRestore();
       merge.mockRestore();
       del.mockRestore();
-    }
-  });
-
-  it("aborts a merge then discards the feature branch", async () => {
-    const abort = vi.spyOn(gitApi, "mergeAbort").mockResolvedValue(undefined);
-    const checkout = vi.spyOn(gitApi, "checkout").mockResolvedValue(undefined);
-    const del = vi.spyOn(gitApi, "deleteBranch").mockResolvedValue(undefined);
-    const runtime = createRuntime({ streamChat: vi.fn(async () => textStream("ok")) });
-    runtime.workflowSession.agentBranch = { name: "feat", base: "main" };
-    try {
-      const result = await (runtime as unknown as {
-        finishBranch: (input: { choice: "discard" }) => Promise<{ message: string }>;
-      }).finishBranch({ choice: "discard" });
-      expect(abort).toHaveBeenCalled();
-      expect(checkout).toHaveBeenCalledWith("main");
-      expect(del).toHaveBeenCalledWith("feat", true);
-      expect(result.message).toMatch(/Discarded/);
-      expect(runtime.workflowSession.agentBranch).toBeNull();
-    } finally {
-      abort.mockRestore();
-      checkout.mockRestore();
-      del.mockRestore();
+      push.mockRestore();
     }
   });
 

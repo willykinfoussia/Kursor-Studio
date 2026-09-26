@@ -8,6 +8,7 @@ describe("kill_process", () => {
     const process: AgentProcessService = {
       run: vi.fn(async ({ command }) => ({ command, stdout: "", stderr: "", exitCode: 0 })),
       start: vi.fn(async ({ command }) => ({ jobId: "abc", command })),
+      output: vi.fn(async (jobId: string) => ({ jobId, command: "", stdout: "", stderr: "", running: false, exitCode: null, truncated: false })),
       kill: vi.fn(async () => undefined),
     };
     const result = await createKillProcessTool({ process }).execute({ jobId: "abc" }, idleToolContext());
@@ -19,6 +20,7 @@ describe("kill_process", () => {
     const process: AgentProcessService = {
       run: vi.fn(async ({ command }) => ({ command, stdout: "", stderr: "", exitCode: 0 })),
       start: vi.fn(async ({ command }) => ({ jobId: "abc", command })),
+      output: vi.fn(async (jobId: string) => ({ jobId, command: "", stdout: "", stderr: "", running: false, exitCode: null, truncated: false })),
       kill: vi.fn(async () => {
         throw new Error("Unknown process job.");
       }),

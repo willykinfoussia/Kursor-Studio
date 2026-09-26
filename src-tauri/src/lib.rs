@@ -41,7 +41,7 @@ use commands::{
         mcp_list_prompts, mcp_list_resources, mcp_list_tools, mcp_probe_tcp, mcp_read_resource, mcp_record_usage,
         mcp_remove, mcp_restart, mcp_set_tool_enabled, mcp_start, mcp_stop, mcp_switch_project, mcp_upsert, mcp_which,
     },
-    process::{process_execute, process_kill, process_run, process_start},
+    process::{process_execute, process_kill, process_output, process_run, process_start},
     project::{
         project_create_directory, project_create_file, project_create_folder, project_delete, project_detect_type,
         project_git_add, project_git_add_paths, project_git_add_remote, project_git_apply_patch,
@@ -161,6 +161,7 @@ pub fn run() {
             process_execute,
             process_run,
             process_start,
+            process_output,
             process_kill,
             terminal_create,
             terminal_write,

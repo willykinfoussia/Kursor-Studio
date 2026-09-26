@@ -71,7 +71,7 @@ Sources :
 | systematic-debugging | Superpowers | 4 phases, evidence | Moins de guess | **Adapter** | Built-in skill V1 + workflow `debug` interne. |
 | verification-before-completion | Superpowers | Interdit de déclarer done sans sortie réelle | Fiabilité | **Adopter** | Étape `verifying` du loop, pas seulement du texte de skill. |
 | git worktrees isolés | Superpowers, ECC, Orca | Chaque agent sur une branche/worktree | Isolation parallèle | **Adapter V1** | Branche in-place (`git_branch` / `checkout -b`) après Build. Un seul checkout ; l’éditeur et le panneau Git suivent. Pas de `.worktrees/`. |
-| finishing-a-development-branch | Superpowers | Merge/PR/keep/discard | Fin de cycle git | **Adopter V1** | Dialogue UI ; merge = checkout base ; conflits listés + continue/abort. |
+| finishing-a-development-branch | Superpowers | Merge local obligatoire | Fin de cycle git | **Adopter V1** | Merge = checkout base ; conflits listés + continue. |
 | writing-skills | Superpowers | Skills testables comme du process-TDD | Qualité des procédures | **Adopter V1** | Skill meta vendored. |
 | SKILL.md YAML portable | Superpowers, ECC | Frontmatter name/description/origin | Unité d’extension la plus portable | **Adopter** | Format identique en esprit, origin `kursor` / `project`. Pas de copies `.cursor/skills` pour d’autres IDEs. |
 | Cross-harness adapters | ECC | Une source skills, N harnesses | ECC est un OS de workflows | **Rejeter** | Kursor *est* le harness. Pas d’adapters Claude/Codex/Cursor. |

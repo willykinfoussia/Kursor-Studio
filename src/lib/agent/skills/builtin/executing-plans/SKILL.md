@@ -39,7 +39,7 @@ After **every** plan todo is completed:
 - Run the verification commands yourself this turn. Do not trust a subagent report as evidence.
 - Then announce: "I'm using the finishing-a-development-branch skill to complete this work."
 - **REQUIRED SUB-SKILL:** Use superpowers:finishing-a-development-branch
-- Follow that skill to present merge / PR / keep / discard
+- Follow that skill: it merges the feature branch into the base locally
 
 ## When to Stop and Ask for Help
 

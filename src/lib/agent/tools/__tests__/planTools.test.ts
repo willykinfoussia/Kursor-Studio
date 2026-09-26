@@ -214,6 +214,19 @@ describe("plan tools", () => {
     expect(planBodyInvalidReason(body, ["Do A", "Do B"])).toMatch(/Test, Verification, Done when/i);
   });
 
+  it("ignores numbered strategy headings when each todo section has a Verification heading", () => {
+    const body = richPlanBody()
+      .replace("## Problem", "## 1. Problem")
+      .replace("## Architecture", "## 2. Architecture")
+      .replace(/\*\*Test:\*\*[^\n]*/g, "### Verification\nConfirm the todo behavior.");
+    expect(planBodyInvalidReason(body, ["Do A", "Do B"])).toBeNull();
+  });
+
+  it("accepts a verification label whose colon sits outside the bold markers", () => {
+    const body = richPlanBody().replace(/\*\*Test:\*\*/g, "**Verification**:");
+    expect(planBodyInvalidReason(body, ["Do A", "Do B"])).toBeNull();
+  });
+
   it("rejects a create_plan body that omits approved design notes", async () => {
     const { fs } = memoryFs();
     const { session, ctx } = context();

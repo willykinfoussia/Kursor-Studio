@@ -69,7 +69,7 @@ Bootstrap session = injection du corps `**using-superpowers**` (règle 1 %, red 
 4. **executing-plans** — plan en main. Le parent implémente. TDD obligatoire. Explore subagents seulement en brainstorm/plan. Implement optionnel. Pas de revue subagent par tâche.
 5. **test-driven-development** — pendant l’implémentation. RED-GREEN-REFACTOR ; supprimer le code écrit avant les tests.
 6. **verification-before-completion** — tous les todos du plan sont complets. Puis suite harness.
-7. **finishing-a-development-branch** — après VBC. Verify tests, menu merge / PR / keep / discard. Merge = checkout base → merge → conflits listés, continue / abort. Cleanup = `git branch -d`.
+7. **finishing-a-development-branch** — après VBC. Verify tests, puis merge local obligatoire (checkout base → merge → conflits listés, continue). Cleanup = `git branch -d`.
 
 **Règle 1 %** (`using-superpowers`) :
 
@@ -118,7 +118,7 @@ Porter les skills Superpowers (corps Markdown, mapping tools Kursor à part — 
 | `requesting-code-review`         | Review vs plan, critical bloque                     |
 | `receiving-code-review`          | Traiter un review (pas d’acquiescement performatif) |
 | `using-git-worktrees`            | Branche in-place après Build (`git_branch`)         |
-| `finishing-a-development-branch` | Merge / PR / keep / discard ; conflits listés       |
+| `finishing-a-development-branch` | Merge local obligatoire ; conflits listés           |
 
 
 **Meta**
@@ -239,7 +239,7 @@ Le nœud `CHK` n’est **pas** un LLM de classification d’intention Kursor. C�
 | « Fix ce bug »                       | Après phase 1 debug                              | `systematic-debugging` puis TDD                                                       |
 | Plan mode UI                         | Pas de source edits                              | Seulement **après** brainstorm si pas déjà fait                                       |
 | Critical review                      | Bloque la tâche suivante                         | `requesting-code-review`                                                              |
-| Fin                                  | Verify + menu git                                | `finishing-a-development-branch`                                                      |
+| Fin                                  | Verify + merge local                             | `finishing-a-development-branch`                                                      |
 
 
 `designApproved` et `planApproved` sont du **état de session** harness, pas seulement du texte modèle.
@@ -346,7 +346,7 @@ LLM-001-SUB
 TDD pendant implement          skill + le modèle lance les tests
 VerificationEngine après tour  harness, commandes projet
 verification-before-completion  pas de claim sans evidence dans CE tour
-finishing-a-development-branch  full suite avant le menu git
+finishing-a-development-branch  full suite puis merge local obligatoire
 ```
 
 Permissions V1, ordre :

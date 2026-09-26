@@ -251,15 +251,35 @@ pub fn walk_files(root: &Path, show_excluded: bool) -> AppResult<Vec<WalkedFile>
     Ok(files)
 }
 
+fn metadata_for_read(path: &Path) -> AppResult<fs::Metadata> {
+    match fs::metadata(path) {
+        Ok(metadata) => Ok(metadata),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(AppError::InvalidRequest("This file does not exist.".to_owned()))
+        }
+        Err(_) => Err(AppError::ReadFailed),
+    }
+}
+
+fn read_file_bytes(path: &Path) -> AppResult<Vec<u8>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(AppError::InvalidRequest("This file does not exist.".to_owned()))
+        }
+        Err(_) => Err(AppError::ReadFailed),
+    }
+}
+
 pub fn read_bytes_file(path: &Path) -> AppResult<Vec<u8>> {
-    let metadata = fs::metadata(path).map_err(|_| AppError::ReadFailed)?;
+    let metadata = metadata_for_read(path)?;
     if !metadata.is_file() {
         return Err(AppError::InvalidRequest("The requested path is not a file.".to_owned()));
     }
     if metadata.len() > MAX_BINARY_FILE_BYTES {
         return Err(AppError::FileTooLarge);
     }
-    fs::read(path).map_err(|_| AppError::ReadFailed)
+    read_file_bytes(path)
 }
 
 pub fn search_files(root: &Path, query: &str, limit: usize) -> AppResult<Vec<FileEntry>> {
@@ -313,14 +333,14 @@ pub fn read_text_file(path: &Path) -> AppResult<String> {
     if is_binary_extension(path) {
         return Err(AppError::BinaryFile);
     }
-    let metadata = fs::metadata(path).map_err(|_| AppError::ReadFailed)?;
+    let metadata = metadata_for_read(path)?;
     if !metadata.is_file() {
         return Err(AppError::InvalidRequest("The requested path is not a file.".to_owned()));
     }
     if metadata.len() > MAX_TEXT_FILE_BYTES {
         return Err(AppError::FileTooLarge);
     }
-    let bytes = fs::read(path).map_err(|_| AppError::ReadFailed)?;
+    let bytes = read_file_bytes(path)?;
     if bytes.iter().take(8192).any(|byte| *byte == 0) {
         return Err(AppError::BinaryFile);
     }
@@ -499,6 +519,13 @@ mod tests {
         assert!(files.iter().any(|entry| entry.relative_path == "src/App.tsx"));
         assert!(files.iter().any(|entry| entry.relative_path == "package.json"));
         assert!(!files.iter().any(|entry| entry.relative_path.contains("node_modules")));
+    }
+
+    #[test]
+    fn missing_text_file_says_it_does_not_exist() {
+        let (_guard, root) = temp_project();
+        let err = read_text_file(&root.join("missing.ts")).unwrap_err();
+        assert_eq!(err.to_string(), "This file does not exist.");
     }
 
     #[test]

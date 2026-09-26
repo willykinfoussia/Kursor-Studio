@@ -300,7 +300,7 @@ export const PIPELINE_TEMPLATE_NODES: PipelineTemplateNode[] = [
     skillId: "verification-before-completion",
     typicalTools: ["run_command"],
   }, HEADER_Y + 160),
-  processPhase(PIPELINE_IDS.finishing, "result", "Finishing", "finishing-a-development-branch after VBC: verify, then merge (checkout base, list conflicts, continue/abort) / PR / keep / discard.", 1940, {
+  processPhase(PIPELINE_IDS.finishing, "result", "Finishing", "finishing-a-development-branch after VBC: verify, then merge (checkout base, list conflicts, continue), then push the base.", 1940, {
     skillId: "finishing-a-development-branch",
     typicalTools: ["finish_development_branch"],
   }, HEADER_Y + 160),

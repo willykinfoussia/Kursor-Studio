@@ -92,11 +92,11 @@ import type {
   WorkflowContext,
 } from "./workflows/types";
 import type { ModelPolicyConfig } from "./routing/types";
-import { gitApi, githubApi } from "../tauri/githubApi";
+import { gitApi } from "../tauri/githubApi";
 import { projectApi } from "../tauri/projectApi";
-import { ensureBranchForPush, isDetachedGitBranch, sanitizeAgentBranchName } from "./tools/gitBranch";
+import { isDetachedGitBranch, sanitizeAgentBranchName } from "./tools/gitBranch";
 import { WorkflowSessionState, shouldCloseImplementationCycle } from "./workflow/sessionState";
-import { isPlanDocumentWrite, pathFromToolInput } from "./workflow/planPath";
+import { isPlanDocumentWrite, pathFromToolInput, trackedMutationPath } from "./workflow/planPath";
 import {
   cycleInteractionMode,
   MODE_LABELS,
@@ -1360,67 +1360,10 @@ export class AgentRuntime {
     };
   }
 
-  private async finishBranch(input: FinishBranchInput) {
+  private async finishBranch(_input: FinishBranchInput) {
     const agent = this.workflowSession.agentBranch;
     const feature = agent?.name;
     const base = agent?.base && agent.base !== "HEAD" ? agent.base : "main";
-
-    if (input.choice === "keep") {
-      this.emit({ type: "finish-branch", choice: "keep" });
-      return { message: `Keeping branch ${feature ?? "current"}. Stay on it for later.` };
-    }
-
-    if (input.choice === "pr") {
-      try {
-        try {
-          await ensureBranchForPush({
-            status: () => projectApi.gitStatus(),
-            checkout: (name) => gitApi.checkout(name),
-            createBranch: (name, start) => gitApi.createBranch(name, start),
-          }, feature);
-        } catch {
-          /* still attempt the push */
-        }
-        await gitApi.push();
-        const repo = useProjectStore.getState().currentProject;
-        const owner = repo?.githubOwner;
-        const name = repo?.githubRepo;
-        if (owner && name) {
-          const head = feature ?? "HEAD";
-          await githubApi.createPull(owner, name, `Kursor: ${head}`, head, base);
-        }
-        this.emit({ type: "finish-branch", choice: "pr" });
-        await this.refreshGitPanel();
-        return { message: `Branch finish: pr. Kept ${feature ?? "current"} for review against ${base}.` };
-      } catch (error) {
-        return { message: toUserMessage(error) };
-      }
-    }
-
-    if (input.choice === "discard") {
-      try {
-        await gitApi.mergeAbort();
-      } catch {
-        /* no merge in progress */
-      }
-      if (feature) {
-        try {
-          await gitApi.checkout(base);
-        } catch {
-          /* base may be missing */
-        }
-        try {
-          await gitApi.deleteBranch(feature, true);
-        } catch {
-          /* already gone */
-        }
-      }
-      this.workflowSession.agentBranch = null;
-      useAgentStore.getState().setAgentWorkspace(null);
-      this.emit({ type: "finish-branch", choice: "discard" });
-      await this.refreshGitPanel();
-      return { message: `Discarded ${feature ?? "branch"} and returned to ${base}.` };
-    }
 
     if (!feature) {
       return { message: "No implementation branch to merge." };
@@ -1447,7 +1390,7 @@ export class AgentRuntime {
         });
         await this.refreshGitPanel();
         return {
-          message: result.message || `Merge conflicts. Edit the files, then call finish_development_branch with choice merge again.`,
+          message: result.message || `Merge conflicts. Edit the files, then call finish_development_branch again.`,
           conflicts: result.conflicts,
           merged: false,
         };
@@ -1457,11 +1400,20 @@ export class AgentRuntime {
       } catch {
         /* still exists */
       }
+      let pushError = "";
+      try {
+        await gitApi.push();
+      } catch (error) {
+        pushError = toUserMessage(error);
+      }
       this.workflowSession.agentBranch = null;
       useAgentStore.getState().setAgentWorkspace(null);
       this.emit({ type: "finish-branch", choice: "merge" });
       await this.refreshGitPanel();
-      return { message: `Merged ${feature} into ${base}.`, merged: true };
+      const message = pushError
+        ? `Merged ${feature} into ${base}. Push failed: ${pushError}`
+        : `Merged ${feature} into ${base} and pushed.`;
+      return { message, merged: true };
     } catch (error) {
       return { message: toUserMessage(error), merged: false };
     }
@@ -1605,7 +1557,7 @@ export class AgentRuntime {
     if (event.type === "tool-completed") {
       this.runToolNames.push(event.tool);
       const input = this.toolInputs.get(event.id) ?? {};
-      const path = pathFromToolInput(input);
+      const path = trackedMutationPath(event.tool, input, this.registry.get(event.tool)?.mutate);
       if (path && !this.runFilePaths.includes(path)) this.runFilePaths.push(path);
       this.trackProcessJob(event.tool, event.output);
       this.toolInputs.delete(event.id);

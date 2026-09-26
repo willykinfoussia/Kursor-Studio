@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PathOutsideProjectError, resolveProjectPath, joinRelativePath, sameFsPath } from "../pathUtils";
+import { PathOutsideProjectError, resolveProjectPath, toProjectRelative, joinRelativePath, sameFsPath } from "../pathUtils";
 
 describe("resolveProjectPath", () => {
   const root = "C:/Projects/TodoApp";
@@ -21,6 +21,13 @@ describe("resolveProjectPath", () => {
   it("rejects absolute paths outside the project", () => {
     expect(() => resolveProjectPath(root, "C:/Windows/System32/drivers/etc/hosts")).toThrow(PathOutsideProjectError);
     expect(() => resolveProjectPath(root, "/etc/passwd")).toThrow(PathOutsideProjectError);
+    expect(() => resolveProjectPath(root, "C:/Projects/TodoApp-evil/secret.txt")).toThrow(PathOutsideProjectError);
+  });
+
+  it("accepts an absolute path that is the project or inside it", () => {
+    expect(toProjectRelative(root, "C:\\Projects\\TodoApp")).toBe("");
+    expect(toProjectRelative(root, "C:/Projects/TodoApp/backend")).toBe("backend");
+    expect(resolveProjectPath(root, "c:/projects/todoapp/src/App.tsx")).toBe("C:/Projects/TodoApp/src/App.tsx");
   });
 
   it("joins names without leaving the parent", () => {

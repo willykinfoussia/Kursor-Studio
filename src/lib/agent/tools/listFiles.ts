@@ -29,7 +29,7 @@ export function createListFilesTool(deps: { fs: FileSystemService }): AgentTool 
     async execute(input, ctx) {
       const root = requireProjectRoot(ctx.projectRoot);
       if (isFailure(root)) return root;
-      const path = optionalRelativeDirectory(input);
+      const path = optionalRelativeDirectory(input, "path", root);
       if (isFailure(path)) return path;
       try {
         const entries = await deps.fs.listDirectory(path);

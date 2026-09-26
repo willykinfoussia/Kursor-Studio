@@ -66,6 +66,7 @@ export const TOOL_CATALOG = [
   "apply_patch",
   "run_command",
   "start_process",
+  "read_process",
   "kill_process",
   "web_search",
   "fetch_url",

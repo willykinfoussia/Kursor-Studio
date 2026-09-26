@@ -7,6 +7,15 @@ function processService(overrides: Partial<AgentProcessService> = {}): AgentProc
   return {
     run: vi.fn(async ({ command }) => ({ command, stdout: "ok", stderr: "", exitCode: 0 })),
     start: vi.fn(async ({ command }) => ({ jobId: "job-1", command })),
+    output: vi.fn(async (jobId: string) => ({
+      jobId,
+      command: "",
+      stdout: "",
+      stderr: "",
+      running: false,
+      exitCode: null,
+      truncated: false,
+    })),
     kill: vi.fn(async () => undefined),
     ...overrides,
   };

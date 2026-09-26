@@ -1,6 +1,6 @@
 use crate::{
     error::AppResult,
-    process::{execute_allowed, resolve_cwd, run_command, ProcessJob, ProcessResult},
+    process::{execute_allowed, resolve_cwd, run_command, ProcessJob, ProcessOutput, ProcessResult},
     state::AppState,
 };
 use tauri::State;
@@ -33,6 +33,11 @@ pub fn process_start(
     let root = active_root(&state)?;
     let directory = resolve_cwd(&root, cwd.as_deref())?;
     state.jobs.start(command, &directory)
+}
+
+#[tauri::command]
+pub fn process_output(job_id: String, state: State<'_, AppState>) -> AppResult<ProcessOutput> {
+    state.jobs.output(&job_id)
 }
 
 #[tauri::command]

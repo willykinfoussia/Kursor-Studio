@@ -11,6 +11,15 @@ export function createCommandTool(runner: CommandRunner): AgentTool {
   const process: AgentProcessService = {
     run: async ({ command }) => runner.run(command),
     start: async ({ command }) => ({ jobId: "test-job", command }),
+    output: async (jobId) => ({
+      jobId,
+      command: "",
+      stdout: "",
+      stderr: "",
+      running: false,
+      exitCode: null,
+      truncated: false,
+    }),
     kill: async () => undefined,
   };
   return createRunCommandTool({ process });

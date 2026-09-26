@@ -251,6 +251,17 @@ function createWorkspaceProcess(root: string): AgentProcessService {
     async start(input) {
       return { jobId: "eval-job", command: input.command };
     },
+    async output(jobId) {
+      return {
+        jobId,
+        command: "",
+        stdout: "",
+        stderr: "",
+        running: false,
+        exitCode: null,
+        truncated: false,
+      };
+    },
     async kill() {},
   };
 }
@@ -291,6 +302,17 @@ function createFakeProcess(): AgentProcessService {
     },
     async start(input) {
       return { jobId: "eval-job", command: input.command };
+    },
+    async output(jobId) {
+      return {
+        jobId,
+        command: "",
+        stdout: "",
+        stderr: "",
+        running: false,
+        exitCode: null,
+        truncated: false,
+      };
     },
     async kill() {},
   };

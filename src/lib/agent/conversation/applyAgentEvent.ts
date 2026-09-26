@@ -410,7 +410,7 @@ export function applyAgentEvent(
         type: "system",
         id: `merge-conflicts:${event.branch}:${current.length}`,
         kind: "error",
-        text: `Merge conflicts in ${files}. Edit the markers, then call finish_development_branch with choice merge.`,
+        text: `Merge conflicts in ${files}. Edit the markers, then call finish_development_branch again.`,
       }];
     }
     default:

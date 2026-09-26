@@ -20,7 +20,7 @@ export function createWriteFileTool(deps: { fs: FileSystemService }): AgentTool 
     async execute(input, ctx) {
       const root = requireProjectRoot(ctx.projectRoot);
       if (isFailure(root)) return root;
-      const path = requiredRelativePath(input);
+      const path = requiredRelativePath(input, "path", root);
       if (isFailure(path)) return path;
       const content = String(asRecord(input).content ?? "");
       try {

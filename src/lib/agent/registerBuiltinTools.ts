@@ -11,7 +11,7 @@ import { nativeFetchImpl, nativeGitService, nativeHttpService, nativeProcessServ
 import { createListFilesTool } from "./tools/listFiles";
 import type { AgentGitService, AgentHttpService, AgentProcessService } from "./tools/native";
 import { createFetchUrlTool, createWebSearchTool } from "./tools/networkTools";
-import { createKillProcessTool, createRunCommandTool, createStartProcessTool } from "./tools/processTools";
+import { createKillProcessTool, createReadProcessTool, createRunCommandTool, createStartProcessTool } from "./tools/processTools";
 import { createLoadSkillTool } from "./tools/loadSkill";
 import { createCreatePlanTool, createUpdatePlanTodoTool } from "./tools/planTools";
 import { createReadFileTool } from "./tools/readFile";
@@ -62,6 +62,7 @@ export function createBuiltinTools(deps: BuiltinToolDependencies) {
     createApplyPatchTool({ fs: deps.fs }),
     createRunCommandTool({ process: deps.process }),
     createStartProcessTool({ process: deps.process }),
+    createReadProcessTool({ process: deps.process }),
     createKillProcessTool({ process: deps.process }),
     createGitStatusTool({ git: deps.git }),
     createGitDiffTool({ git: deps.git }),

@@ -4,6 +4,7 @@ export function toUserError(error: unknown, fallback: string): string {
   const raw = error instanceof Error ? error.message : String(error);
   agentLogger.error(fallback, { detail: raw.slice(0, 300) });
   const value = raw.toLowerCase();
+  if (value.includes("this file does not exist")) return "This file does not exist.";
   if (value.includes("outside")) return "The requested path is outside the active project.";
   if (value.includes("utf-8")) return "Unable to display this file as UTF-8.";
   if (value.includes("binary file")) return "Binary file";

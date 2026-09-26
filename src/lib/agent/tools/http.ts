@@ -12,6 +12,7 @@ export { assertSafeHttpsUrl } from "../web/safety";
 export const nativeProcessService: AgentProcessService = {
   run: ({ command, cwd, timeoutMs }) => processApi.run(command, cwd, timeoutMs),
   start: ({ command, cwd }) => processApi.start(command, cwd),
+  output: (jobId) => processApi.output(jobId),
   kill: (jobId) => processApi.kill(jobId),
 };
 

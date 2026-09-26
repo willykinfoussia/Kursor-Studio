@@ -41,6 +41,16 @@ export interface ProcessJob {
   command: string;
 }
 
+export interface ProcessOutput {
+  jobId: string;
+  command: string;
+  stdout: string;
+  stderr: string;
+  running: boolean;
+  exitCode: number | null;
+  truncated: boolean;
+}
+
 export interface GitStatus {
   branch: string;
   changedFiles: string[];

@@ -186,7 +186,16 @@ function hasResultFilter(query: MonitoringQuery): boolean {
   return Boolean(query.type || query.runner || query.userCaseId);
 }
 
-function toBundle(run: TestRun) {
+function integerMs(value: number): number {
+  return Math.round(value);
+}
+
+function optionalIntegerMs(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
+export function toBundle(run: TestRun) {
   const runRecord: TestRunRecord = {
     id: run.id,
     projectId: run.projectId,
@@ -195,8 +204,8 @@ function toBundle(run: TestRun) {
     commitSha: run.commitSha ?? null,
     branch: run.branch ?? null,
     status: run.status,
-    startedAt: run.timestamp,
-    durationMs: run.durationMs,
+    startedAt: integerMs(run.timestamp),
+    durationMs: optionalIntegerMs(run.durationMs),
     payloadJson: JSON.stringify(run),
   };
   const results: TestResultRecord[] = run.results.map((result) => ({
@@ -209,7 +218,7 @@ function toBundle(run: TestRun) {
     testType: result.case.type,
     runner: result.case.runner,
     status: result.case.status,
-    durationMs: result.case.durationMs ?? null,
+    durationMs: optionalIntegerMs(result.case.durationMs),
     error: result.case.error ?? null,
     file: result.case.file ?? null,
   }));
@@ -222,7 +231,7 @@ function toBundle(run: TestRun) {
       branches: run.coverage.branches ?? null,
       functions: run.coverage.functions ?? null,
       statements: run.coverage.statements ?? null,
-      createdAt: run.timestamp,
+      createdAt: integerMs(run.timestamp),
     }
     : null;
   const artifacts: TestArtifactRecord[] = run.artifacts.map((artifact: TestArtifact) => ({

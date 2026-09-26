@@ -15,7 +15,12 @@ const MERMAID_BLOCK = /```mermaid[\s\S]*?```/gi;
 const CODE_FENCE = /```(?!mermaid\b)[^\n]*\n[\s\S]*?```/;
 const BACKTICK_PATH = /`[^`\n]+\.[A-Za-z0-9]+`/;
 const FILES_OR_TEST = /\*\*Files:\*\*|\bFiles:\s|##?\s+Tests?\b|\*\*Tests?:\*\*/i;
-const TODO_VERIFY = /\*\*(?:Test|Verification|Done when|V[eé]rif):?\*\*|#{2,6}\s+(?:Test|Verification|Done when|V[eé]rif)\b/i;
+const TODO_LABEL = "Test|Verification|Done when|V[eé]rif";
+/** Bold label with the colon inside or just after `**`, or a `##`/`###` heading. Combined labels such as `**Verification / Done when**:` count. */
+const TODO_VERIFY = new RegExp(
+  `(?:\\*\\*[^\\*\\n]{0,80}(?:${TODO_LABEL})[^\\*\\n]{0,40}\\*\\*:?|#{2,6}\\s+[^\\n]{0,40}(?:${TODO_LABEL})\\b)`,
+  "i",
+);
 const NUMBERED_TASK_HEADING = /^#{1,6}\s+\d+\.\s+\S/;
 
 const planWriteLocks = new Map<string, Promise<unknown>>();
@@ -157,7 +162,12 @@ export function planStrategyInvalidReason(body: string): string | null {
   return null;
 }
 
-function planVerificationInvalidReason(body: string): string | null {
+function sectionHeading(section: string): string {
+  const line = section.split(/\r?\n/, 1)[0] ?? "";
+  return stripHeadingDecor(line);
+}
+
+function planVerificationInvalidReason(body: string, todos: string[]): string | null {
   const sections = extractNumberedTaskSections(body);
   if (sections.length === 0) {
     if (!TODO_VERIFY.test(body) && !FILES_OR_TEST.test(body)) {
@@ -165,7 +175,15 @@ function planVerificationInvalidReason(body: string): string | null {
     }
     return null;
   }
-  const unverified = sections.find((section) => !TODO_VERIFY.test(section));
+  const namedTodos = todos.map((todo) => todo.trim()).filter(Boolean);
+  const targets = namedTodos.length === 0
+    ? sections
+    : sections.filter((section) => {
+      const heading = sectionHeading(section);
+      return namedTodos.some((todo) => textCoversTodo(heading, todo));
+    });
+  if (namedTodos.length > 0 && targets.length === 0) return null;
+  const unverified = targets.find((section) => !TODO_VERIFY.test(section));
   if (unverified) {
     return "each todo section must include Test, Verification, Done when, or Vérif.";
   }
@@ -194,7 +212,7 @@ export function planBodyInvalidReason(
   }
   const strategyError = planStrategyInvalidReason(trimmed);
   if (strategyError) return strategyError;
-  const verifyError = planVerificationInvalidReason(trimmed);
+  const verifyError = planVerificationInvalidReason(trimmed, todos);
   if (verifyError) return verifyError;
   const missing = todos
     .map((todo, index) => ({ todo: todo.trim(), index }))

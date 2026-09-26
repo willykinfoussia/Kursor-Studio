@@ -13,6 +13,17 @@ describe("read_file", () => {
     expect(result.data).toMatchObject({ path: "src/App.tsx", content: "cd", truncated: true });
   });
 
+  it("reads an absolute path that stays inside the project", async () => {
+    const readFile = vi.fn(async () => "ok");
+    const fs = createMockFs({ readFile });
+    const result = await createReadFileTool({ fs }).execute(
+      { path: "C:/Projects/TodoApp/src/App.tsx" },
+      idleToolContext("C:/Projects/TodoApp"),
+    );
+    expect(result.success).toBe(true);
+    expect(readFile).toHaveBeenCalledWith("src/App.tsx");
+  });
+
   it("rejects invalid input and path traversal", async () => {
     const tool = createReadFileTool({ fs: createMockFs() });
     expect((await tool.execute({ path: "" }, idleToolContext())).error?.code).toBe("invalid_input");

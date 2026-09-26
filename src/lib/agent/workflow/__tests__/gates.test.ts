@@ -573,12 +573,12 @@ describe("plan mode and executing-plans", () => {
     next.setPlanTodosComplete(true);
     expect(evaluateWorkflowGate("git_commit", { message: "feat" }, true, next).decision).toBe("allow");
     expect(evaluateWorkflowGate("run_command", { command: "pnpm test" }, true, next).decision).toBe("allow");
-    expect(evaluateWorkflowGate("finish_development_branch", { choice: "pr" }, true, next)).toEqual({
+    expect(evaluateWorkflowGate("finish_development_branch", { choice: "merge" }, true, next)).toEqual({
       decision: "deny",
       reason: LOAD_VERIFICATION_REASON,
     });
     next.markSkillCheck("verification-before-completion");
-    expect(evaluateWorkflowGate("finish_development_branch", { choice: "pr" }, true, next).decision).toBe("allow");
+    expect(evaluateWorkflowGate("finish_development_branch", { choice: "merge" }, true, next).decision).toBe("allow");
   });
 
   it("still denies mutations while a pending todo remains", () => {

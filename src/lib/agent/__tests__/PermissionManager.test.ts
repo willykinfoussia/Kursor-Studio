@@ -126,6 +126,15 @@ describe("PermissionManager", () => {
     }
   });
 
+  it("allows an absolute path that is inside the open project", async () => {
+    const permissions = manager(catalog);
+    expect(await permissions.authorize("read_file", { path: "C:/Projects/TodoApp/src/App.tsx" })).toBe("allow");
+    expect(await permissions.authorize("run_command", { command: "pnpm test", cwd: "C:\\Projects\\TodoApp" })).toBe("allow");
+    expect(await permissions.authorize("run_command", { command: "pnpm test", cwd: "C:/Projects/TodoApp/src" })).toBe("allow");
+    expect(await permissions.authorize("run_command", { command: "pnpm test", cwd: "C:/Windows" })).toBe("deny");
+    expect(await permissions.authorize("run_command", { command: "pnpm test", cwd: "C:/Projects/TodoApp-evil" })).toBe("deny");
+  });
+
   it("keeps hard denies in full-access", async () => {
     const permissions = manager(catalog, { mode: "full-access" });
     expect(await permissions.authorize("read_file", { path: ".env" })).toBe("deny");
@@ -179,6 +188,7 @@ describe("PermissionManager", () => {
     expect(map.delete_file).toEqual({ capability: "filesystem.delete", riskLevel: "high" });
     expect(map.run_command).toEqual({ capability: "terminal.execute", riskLevel: "high" });
     expect(map.start_process).toEqual({ capability: "terminal.long_running", riskLevel: "critical" });
+    expect(map.read_process).toEqual({ capability: "terminal.execute", riskLevel: "low" });
     expect(map.kill_process).toEqual({ capability: "applications.execute", riskLevel: "high" });
     expect(map.web_search).toEqual({ capability: "network.search", riskLevel: "medium" });
     expect(map.fetch_url).toEqual({ capability: "network.fetch", riskLevel: "medium" });

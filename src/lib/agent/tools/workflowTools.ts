@@ -231,31 +231,18 @@ export function createAgentTool(): AgentTool {
 export function createFinishBranchTool(): AgentTool {
   return {
     name: "finish_development_branch",
-    description: "Present merge / PR / keep / discard after every plan todo is complete. Merge checkouts the base branch, lists conflicts, and continues or aborts an in-progress merge.",
+    description: "Merge the implementation branch into its base after every plan todo is complete. Checkouts the base branch, lists conflicts, and continues an in-progress merge.",
     ...toolPermission("git.write", "high"),
     timeoutMs: 10 * 60_000,
     mutate: true,
     parameters: toolSchema({
-      choice: { type: "string", description: "merge | pr | keep | discard" },
+      choice: { type: "string", description: "Ignored. The tool always merges locally into the base branch." },
     }, []),
-    async execute(input, ctx) {
+    async execute(_input, ctx) {
       const harness = ctx.harness;
       if (!harness) return failResult("no_harness", "finish_development_branch requires the harness.");
-      let choice = String(asRecord(input).choice ?? "").trim();
-      if (choice !== "merge" && choice !== "pr" && choice !== "keep" && choice !== "discard") {
-        const answer = await harness.askUser({
-          id: crypto.randomUUID(),
-          prompt: "Finish this development branch?",
-          options: parseQuestionOptions(["merge", "pr", "keep", "discard"]),
-          kind: "finish-branch",
-        });
-        choice = answer.selected;
-      }
-      if (choice !== "merge" && choice !== "pr" && choice !== "keep" && choice !== "discard") {
-        return failResult("invalid_input", "choice must be merge, pr, keep, or discard.");
-      }
-      ctx.skillSession?.emit?.({ type: "finish-branch", choice });
-      const result = await harness.finishBranch({ choice });
+      ctx.skillSession?.emit?.({ type: "finish-branch", choice: "merge" });
+      const result = await harness.finishBranch({ choice: "merge" });
       return okResult(result);
     },
   };

@@ -201,7 +201,7 @@ export type AgentEvent =
   | { type: "permission-classifier"; tool: string; decision: "allow" | "deny" | "ask_human"; reason?: string }
   | { type: "compact_boundary"; trigger: "auto" | "manual"; thrashing?: boolean }
   | { type: "llm-started"; requestId: string; kind: "001" | "sub" | "vrp" | "perm" | "cmp"; model: string }
-  | { type: "finish-branch"; choice: "merge" | "pr" | "keep" | "discard" }
+  | { type: "finish-branch"; choice: "merge" }
   | { type: "approval-resolved"; id: string; kind: "permission" | "workflow"; decision: string; selected?: string }
   | { type: "compacted"; summary: string; kept: number; dropped: number }
   | { type: "run-resumed"; sessionId: string; requestId: string }

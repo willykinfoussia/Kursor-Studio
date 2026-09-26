@@ -11,6 +11,7 @@ export const GROUPABLE_TOOLS = new Set([
 export const STANDALONE_TOOLS = new Set([
   "run_command",
   "start_process",
+  "read_process",
   "kill_process",
   "write_file",
   "create_file",
@@ -24,7 +25,7 @@ export const STANDALONE_TOOLS = new Set([
   "git_fetch",
 ]);
 
-export const PROCESS_TOOLS = new Set(["run_command", "start_process", "kill_process", "write_stdin"]);
+export const PROCESS_TOOLS = new Set(["run_command", "start_process", "read_process", "kill_process", "write_stdin"]);
 export const MUTATING_FILE_TOOLS = new Set([
   "write_file",
   "create_file",
@@ -51,7 +52,7 @@ const EDIT_TOOLS = new Set([
   "rename_file",
   "create_directory",
 ]);
-const TERMINAL_TOOLS = new Set(["run_command", "start_process", "write_stdin", "kill_process"]);
+const TERMINAL_TOOLS = new Set(["run_command", "start_process", "read_process", "write_stdin", "kill_process"]);
 const WEB_TOOLS = new Set(["web_search", "fetch_url"]);
 const VERIFY_TOOLS = new Set(["typecheck", "lint", "test", "build", "runtime_check"]);
 const SKILL_TOOLS = new Set(["load_skill"]);

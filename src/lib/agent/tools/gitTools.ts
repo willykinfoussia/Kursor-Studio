@@ -6,14 +6,14 @@ import { asRecord, toolSchema } from "./schema";
 import { isFailure, optionalRelativeDirectory, requireProjectRoot, requiredRelativePath } from "./paths";
 import { ensureBranchForPush } from "./gitBranch";
 
-function optionalPaths(input: unknown): string[] | ToolResult {
+function optionalPaths(input: unknown, projectRoot: string): string[] | ToolResult {
   const raw = asRecord(input).paths;
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) return failResult("invalid_input", "paths must be an array of relative files.");
   const paths: string[] = [];
   for (const item of raw) {
     if (typeof item !== "string") return failResult("invalid_input", "paths must be an array of relative files.");
-    const parsed = requiredRelativePath({ path: item });
+    const parsed = requiredRelativePath({ path: item }, "path", projectRoot);
     if (isFailure(parsed)) return parsed;
     paths.push(parsed);
   }
@@ -54,7 +54,7 @@ export function createGitDiffTool(deps: { git: AgentGitService }): AgentTool {
     async execute(input, ctx) {
       const root = requireProjectRoot(ctx.projectRoot);
       if (isFailure(root)) return root;
-      const path = optionalRelativeDirectory(input);
+      const path = optionalRelativeDirectory(input, "path", root);
       if (isFailure(path)) return path;
       try {
         const diff = await deps.git.diff(path || undefined);
@@ -83,7 +83,7 @@ export function createGitCommitTool(deps: { git: AgentGitService }): AgentTool {
       if (isFailure(root)) return root;
       const message = String(asRecord(input).message ?? "").trim();
       if (!message) return failResult("invalid_input", "Commit message is required.");
-      const paths = optionalPaths(input);
+      const paths = optionalPaths(input, root);
       if (isFailure(paths)) return paths;
       const push = asRecord(input).push === true;
       try {

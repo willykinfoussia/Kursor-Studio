@@ -18,7 +18,7 @@ export function createCreateDirectoryTool(deps: { fs: FileSystemService }): Agen
     async execute(input, ctx) {
       const root = requireProjectRoot(ctx.projectRoot);
       if (isFailure(root)) return root;
-      const path = requiredRelativePath(input);
+      const path = requiredRelativePath(input, "path", root);
       if (isFailure(path)) return path;
       try {
         await deps.fs.createDirectory(path);

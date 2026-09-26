@@ -97,7 +97,7 @@ export interface DeclarativeHook {
   };
 }
 
-export const COMMAND_TOOLS = new Set(["run_command", "start_process", "kill_process"]);
+export const COMMAND_TOOLS = new Set(["run_command", "start_process", "read_process", "kill_process"]);
 
 export const DENY_EVENTS = new Set<HookEventName>([
   "before_tool",
