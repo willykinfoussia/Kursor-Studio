@@ -67,6 +67,7 @@ export type ModeOverlaySession = {
   agentBranch?: { name: string; base?: string } | null;
   designNotes?: string[];
   designBrief?: string | null;
+  planExploreDone?: boolean;
 };
 
 const PLAN_READ_ONLY = `You are in Plan mode (read-only, except structured plans).
@@ -86,9 +87,12 @@ function planWriteFromDesign(session?: ModeOverlaySession | null): string {
     notes.length > 0 ? `Approved design choices (MUST appear in create_plan overview and body): ${notes.join("; ")}.` : "",
     brief ? `Approved design brief (MUST follow):\n${brief.slice(0, 2500)}` : "",
   ].filter(Boolean).join("\n");
+  const research = session?.planExploreDone
+    ? "The design is already approved and explore research is already done. Do not reload brainstorming. Do not re-ask the same design questions. Do not dispatch more explore subagents."
+    : `The design is already approved. Do not reload brainstorming. Do not re-ask the same design questions.
+You MUST call load_skill with skill writing-plans, then load_skill subagent-driven-planning and dispatch at least two explore subagents in the same response, then create_plan this turn. Do not skip the skills.`;
   return `${PLAN_READ_ONLY}
-The design is already approved. Do not reload brainstorming. Do not re-ask the same design questions.
-You MUST call load_skill with skill writing-plans, then load_skill subagent-driven-planning and dispatch at least two explore subagents in the same response, then create_plan this turn. Do not skip the skills.
+${research}
 Call create_plan now using the agreed design from this conversation: a name, an overview, and a detailed markdown body (at least 6000 characters besides mermaid) with Problem, Architecture, KEEP/EXTEND impact, mermaid diagrams, short contract excerpts, and a section per todo that names files and how to verify. Outline-only bodies (diagrams + a file table + a bullet list) are rejected. Do not dump full implementations.
 ${constraints || "Follow the agreed design from this conversation. Do not invent a different stack, storage, or product scope."}
 If create_plan returns success false, the plan was not created. Fix the body and call create_plan again. Do not tell the user the plan exists.

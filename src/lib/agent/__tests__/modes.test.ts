@@ -88,6 +88,21 @@ describe("interaction modes", () => {
     expect(overlay).not.toMatch(/press Build/);
   });
 
+  it("tells Plan mode to call create_plan without more explores once research is done", () => {
+    const overlay = modeSystemOverlay("plan", {
+      goalKind: "build",
+      designApproved: { scope: "x", at: 1 },
+      planPath: null,
+      planExploreDone: true,
+    });
+    expect(overlay).toMatch(/explore research is already done/i);
+    expect(overlay).toMatch(/Do not dispatch more explore subagents/i);
+    expect(overlay).toMatch(/create_plan now using the agreed design/i);
+    expect(overlay).toMatch(/Do not end the turn without create_plan/i);
+    expect(overlay).not.toMatch(/at least two explore/i);
+    expect(overlay).not.toMatch(/Do not call create_plan yet/i);
+  });
+
   it("writes a new plan after design yes even when a foreign disk plan is approved", () => {
     const plan = createPlanDocument({ name: "Old Next", overview: "", body: "", todos: ["a"] });
     plan.status = "approved";

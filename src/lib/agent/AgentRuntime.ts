@@ -121,6 +121,12 @@ import { graphService } from "../graph/GraphService";
 export const MAX_PLAN_NUDGES = 1;
 export const MAX_BUILD_NUDGES = 16;
 export const PLAN_NUDGE_MESSAGE = "Plan mode requires a structured plan. Dispatch at least two explore subagents (agent, subagent_type explore) in the same response if create_plan failed because explores are required, then call create_plan with the plan name, overview, body, and one todo per implementable task. Same-turn explores then create_plan is allowed. If create_plan failed for another reason, the plan was not created: fix the body so each todo has a matching section, then call create_plan again. Do not tell the user the plan exists. Do not tell them to click Build. Do not end the turn with free text only.";
+export const PLAN_NUDGE_AFTER_EXPLORE_MESSAGE = "Explore research is done and the design is approved. Call create_plan now with the agreed design: name, overview, and a detailed body (Problem, Architecture, KEEP/EXTEND, mermaid, contract excerpts, a section per todo). Do not dispatch more explore subagents. Do not end the turn with free text only. If create_plan returns success false, fix the body and call create_plan again. Do not tell the user the plan exists. Do not tell them to click Build.";
+
+export function planNudgeMessage(session?: { planExploreDone?: boolean } | null): string {
+  if (session?.planExploreDone) return PLAN_NUDGE_AFTER_EXPLORE_MESSAGE;
+  return PLAN_NUDGE_MESSAGE;
+}
 export const BUILD_NUDGE_MESSAGE = "The plan still has unfinished todos. Continue with the next pending or in_progress todo now. Call update_plan_todo with status in_progress, implement it, then mark it completed. Do not end the turn while plan todos remain pending or in_progress. After completing a todo, start the next one immediately. Stop only if you are blocked.";
 
 export function shouldNudgePlanMode(
@@ -763,7 +769,7 @@ export class AgentRuntime {
       await this.applyCompact("auto");
       context = await this.contextBuilder.build(this.messages, toolsEnabled);
     }
-    const systemPrompt = [
+    const systemPromptForTurn = () => [
       modeSystemOverlay(this.workflowSession.interactionMode, this.workflowSession),
       request.overlay,
       buildSystemPrompt(context.assembled, toolsEnabled),
@@ -828,7 +834,7 @@ export class AgentRuntime {
         execution,
         models,
         fallbackEnabled: settings.fallbackEnabled,
-        systemPrompt,
+        systemPrompt: systemPromptForTurn(),
         toolsEnabled,
         simulateFailureFor: settings.simulateFailureFor,
         signal: controller.signal,
@@ -868,7 +874,7 @@ export class AgentRuntime {
         execution.baseMessages.push({
           id: crypto.randomUUID(),
           role: "system",
-          content: PLAN_NUDGE_MESSAGE,
+          content: planNudgeMessage(this.workflowSession),
           timestamp: Date.now(),
         });
         result = await runLoop();

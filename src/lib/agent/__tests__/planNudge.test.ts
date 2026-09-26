@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_PLAN_NUDGES, PLAN_NUDGE_MESSAGE, shouldNudgePlanMode } from "../AgentRuntime";
+import { MAX_PLAN_NUDGES, PLAN_NUDGE_MESSAGE, planNudgeMessage, shouldNudgePlanMode } from "../AgentRuntime";
 
 const approved = { designApproved: { scope: "x", at: 1 }, planPath: null as string | null };
 
@@ -45,5 +45,15 @@ describe("shouldNudgePlanMode", () => {
     expect(PLAN_NUDGE_MESSAGE).toMatch(/explore/i);
     expect(PLAN_NUDGE_MESSAGE).toMatch(/at least two explore/i);
     expect(PLAN_NUDGE_MESSAGE).toMatch(/Same-turn explores then create_plan/i);
+    expect(planNudgeMessage({ planExploreDone: false })).toBe(PLAN_NUDGE_MESSAGE);
+  });
+
+  it("tells the model to create_plan without more explores once research is done", () => {
+    const message = planNudgeMessage({ planExploreDone: true });
+    expect(message).toMatch(/Explore research is done/i);
+    expect(message).toMatch(/Call create_plan now/i);
+    expect(message).toMatch(/Do not dispatch more explore subagents/i);
+    expect(message).toMatch(/Do not end the turn with free text only/i);
+    expect(message).not.toMatch(/at least two explore/i);
   });
 });
