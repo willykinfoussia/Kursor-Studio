@@ -104,6 +104,87 @@ describe("groupTimelineItems", () => {
     expect(views[1]).toMatchObject({ kind: "item" });
   });
 
+  it("merges user questions separated by an assistant message or a tool", () => {
+    const question = (id: string): ConversationItem => ({
+      type: "user-question",
+      id,
+      questionId: id,
+      prompt: id,
+      options: [{ id: "a", label: "A" }],
+    });
+    const views = groupTimelineItems(
+      [
+        tool("1"),
+        question("q1"),
+        { type: "assistant", id: "a", messageId: "m", content: "next" },
+        tool("2"),
+        question("q2"),
+      ],
+      new Map([
+        ["1", { tool: "ask_user_question", status: "completed" }],
+        ["2", { tool: "ask_user_question", status: "completed" }],
+      ]),
+    );
+    expect(views.map((view) => view.kind)).toEqual(["tool-group", "item", "tool-group", "question-chain"]);
+    const chain = views[3];
+    expect(chain?.kind).toBe("question-chain");
+    if (chain?.kind === "question-chain") {
+      expect(chain.items.map((item) => item.questionId)).toEqual(["q1", "q2"]);
+    }
+  });
+
+  it("keeps two question panels when a user message sits between them", () => {
+    const question = (id: string): ConversationItem => ({
+      type: "user-question",
+      id,
+      questionId: id,
+      prompt: id,
+      options: [{ id: "a", label: "A" }],
+    });
+    const views = groupTimelineItems(
+      [
+        question("q1"),
+        { type: "user", id: "u", messageId: "m" },
+        question("q2"),
+      ],
+      new Map(),
+    );
+    expect(views.map((view) => view.kind)).toEqual(["item", "item", "item"]);
+    expect(views.filter((view) => view.kind === "question-chain")).toHaveLength(0);
+  });
+
+  it("leaves a single question in place and keeps text after a chain behind the panel", () => {
+    const question = (id: string): ConversationItem => ({
+      type: "user-question",
+      id,
+      questionId: id,
+      prompt: id,
+      options: [{ id: "a", label: "A" }],
+    });
+    const alone = groupTimelineItems(
+      [
+        question("q1"),
+        { type: "assistant", id: "a", messageId: "m", content: "thanks" },
+      ],
+      new Map(),
+    );
+    expect(alone.map((view) => view.kind)).toEqual(["item", "item"]);
+    expect(alone[0]).toMatchObject({ kind: "item", item: { type: "user-question", questionId: "q1" } });
+
+    const trailed = groupTimelineItems(
+      [
+        question("q1"),
+        question("q2"),
+        { type: "assistant", id: "a2", messageId: "m2", content: "done" },
+        { type: "plan-card", id: "p", planId: "plan" },
+      ],
+      new Map(),
+    );
+    expect(trailed.map((view) => view.kind)).toEqual(["question-chain", "item", "item"]);
+    expect(trailed[1]).toMatchObject({ kind: "item", item: { type: "assistant" } });
+    expect(trailed[2]).toMatchObject({ kind: "item", item: { type: "plan-card" } });
+  });
+
   it("summarizes explore, edit, commands and verification", () => {
     expect(summarizeToolGroup([
       { tool: "read_file", status: "completed", input: { path: "a.ts" } },

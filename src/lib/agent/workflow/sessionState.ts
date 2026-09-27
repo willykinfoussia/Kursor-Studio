@@ -6,7 +6,7 @@ import {
 import type { ModelTaskType } from "../routing/types";
 import type { TaskComplexity } from "../workflows/types";
 import { routeGoalKind, type TurnReply, type TurnVerdict } from "../workflows/turnClassifier";
-import { isAffirmativeReply, isDesignApprovalReply, isDesignRejectionReply } from "./approvalLanguage";
+import { explicitDesignYes, isAffirmativeReply, isDesignApprovalReply, isDesignRejectionReply } from "./approvalLanguage";
 
 const CATEGORY_PREFIX = /^(?:[\p{L}\d][\p{L}\d\s/]*)\s+[—–-]\s+/u;
 
@@ -98,6 +98,7 @@ export class WorkflowSessionState {
   criticalReviewOpen = false;
   lastUserPrompt = "";
   goalKind: GoalKind = "other";
+  turnReply: TurnReply = "none";
   complexity: TaskComplexity = "medium";
   modelTask: ModelTaskType = "coding";
   subagent = false;
@@ -123,7 +124,12 @@ export class WorkflowSessionState {
     const verdict = options?.verdict;
     const previousGoal = this.goalKind;
     const previousSkillCheck = this.skillCheckThisTurn;
-    const reply = verdict?.reply ?? "none";
+    const designPending = previousGoal === "build" && !this.designApproved;
+    let reply = verdict?.reply ?? "none";
+    if (designPending && reply !== "design_no" && explicitDesignYes(prompt)) {
+      reply = "design_yes";
+    }
+    this.turnReply = reply;
     const affirmative = isAffirmativeReply(reply);
     const rejected = isDesignRejectionReply(reply);
     const continuing = verdict?.continuation === "continue";
@@ -360,7 +366,7 @@ export class WorkflowSessionState {
   applyAffirmativeApprovals(reply: TurnReply): ChatApprovalResult {
     const result: ChatApprovalResult = { designApproved: false, planApproved: false };
     if (!isDesignApprovalReply(reply)) return result;
-    const needsDesign = !this.designApproved && this.invokedSkillIds.includes("brainstorming");
+    const needsDesign = !this.designApproved && this.goalKind === "build";
     if (needsDesign) {
       this.approveDesign(this.lastUserPrompt);
       result.designApproved = true;
@@ -453,6 +459,7 @@ export class WorkflowSessionState {
     this.criticalReviewOpen = false;
     this.lastUserPrompt = "";
     this.goalKind = "other";
+    this.turnReply = "none";
     this.complexity = "medium";
     this.modelTask = "coding";
     this.subagent = false;

@@ -138,6 +138,33 @@ describe("PipelineBinder", () => {
     expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.user)?.metadata?.content).toBe("rewritten by slash");
   });
 
+  it("keeps the human prompt when the model is sent a build-plan prompt", () => {
+    const graph = bindPipeline([
+      event(1, { type: "task-started", taskId: "t1", title: "Il n'y a pas d'image pour les boissons" }),
+      event(2, {
+        type: "started",
+        requestId: "run-1",
+        messageId: "m1",
+        model: "laguna",
+        userMessage: {
+          id: "u1",
+          role: "user",
+          content: "Build the approved plan \"Boisson\" at .kursor/plans/boisson.plan.md.",
+          timestamp: 1,
+        },
+      }),
+      event(3, { type: "skill-loaded", skillId: "executing-plans", name: "Executing plans" }),
+      event(4, { type: "step-started", stepId: "s1", index: 0, kind: "model" }),
+      event(5, { type: "assistant-message", messageId: "m1", text: "Starting the first todo." }),
+      event(6, { type: "tool-completed", id: "t1", tool: "read_file", output: "seed.ts" }),
+    ]);
+    expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.user)?.metadata?.content).toBe("Il n'y a pas d'image pour les boissons");
+    const turns = graph.nodes.find((node) => node.id === PIPELINE_IDS.executingPlans)?.metadata?.turns as { input: string; output: string; tools: string[] }[];
+    expect(turns[0]?.input).toContain("Build the approved plan");
+    expect(turns[0]?.output).toBe("Starting the first todo.");
+    expect(turns[0]?.tools).toEqual(["read_file"]);
+  });
+
   it("packs filets on overview and keeps streamText for the AgentLoop drill", () => {
     const idle = idlePipelineGraph();
     const visible = focusedGraph(idle.nodes, idle.edges, []);

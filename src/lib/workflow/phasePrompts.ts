@@ -1,4 +1,5 @@
 import type { AgentRunEvent } from "./events";
+import { isBuildPlanPrompt } from "../agent/plans/isBuildPlanPrompt";
 import { PIPELINE_IDS, PROCESS_SKILL_PHASE, TOOL_PHASE, processSkillForSubagent } from "./pipelineSchema";
 
 export type PromptRole = "user" | "agent" | "tool" | "system";
@@ -84,6 +85,7 @@ export function extractPhasePrompts(events: readonly AgentRunEvent[]): Map<strin
         break;
       }
       case "started": {
+        if (isBuildPlanPrompt(payload.userMessage.content)) break;
         runUserPrompt = payload.userMessage.content;
         lastAgentOrUser = runUserPrompt;
         setOutput(map, PIPELINE_IDS.user, runUserPrompt, "user");

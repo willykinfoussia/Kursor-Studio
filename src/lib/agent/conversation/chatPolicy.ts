@@ -47,7 +47,7 @@ export const CHAT_EVENT_POLICY = {
   "approval-resolved": "strip-approval",
   compacted: "hidden",
   "run-resumed": "hidden",
-  "turn-classified": "hidden",
+  "turn-classified": "timeline",
   "hook-denied": "timeline",
   "hook-warned": "hidden",
   "hook-fired": "hidden",

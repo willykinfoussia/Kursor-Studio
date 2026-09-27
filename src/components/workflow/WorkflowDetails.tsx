@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { formatDuration } from "../../lib/agent/conversation";
+import { isBuildPlanPrompt } from "../../lib/agent/plans/isBuildPlanPrompt";
+import { useAgentStore } from "../../stores/agentStore";
 import type { AgentGraphEdge, AgentGraphNode } from "../../lib/workflow/types";
 import {
   openCapability,
@@ -10,6 +13,7 @@ import {
 import { capabilityIdFromNode } from "../../lib/capabilities/fromGraph";
 import { canDrillNode } from "../../lib/workflow/graphFocus";
 import { isFiletBranch, isProcessPhase, PIPELINE_IDS } from "../../lib/workflow/pipelineSchema";
+import type { PhaseTurn } from "../../lib/workflow/phaseTurns";
 import { useWorkflowStore } from "../../stores/workflowStore";
 
 export function WorkflowDetails({
@@ -63,6 +67,60 @@ export function WorkflowDetails({
   );
 }
 
+function lastHumanPrompt(messages: readonly { role: string; content: string }[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "user") continue;
+    const content = message.content.trim();
+    if (content && !isBuildPlanPrompt(content)) return content;
+  }
+  return "";
+}
+
+function promptMeta(nodeId: string, meta: Record<string, unknown>, messages: readonly { role: string; content: string }[]) {
+  if (nodeId !== PIPELINE_IDS.user) return meta;
+  const human = lastHumanPrompt(messages);
+  if (!human) return meta;
+  const next = { ...meta };
+  if (typeof next.content === "string" && isBuildPlanPrompt(next.content)) next.content = human;
+  if (typeof next.outputPrompt === "string" && isBuildPlanPrompt(next.outputPrompt)) next.outputPrompt = human;
+  return next;
+}
+
+function readTurns(meta: Record<string, unknown>): PhaseTurn[] {
+  if (!Array.isArray(meta.turns)) return [];
+  return meta.turns.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Partial<PhaseTurn>;
+    return [{
+      input: typeof record.input === "string" ? record.input : "",
+      output: typeof record.output === "string" ? record.output : "",
+      tools: Array.isArray(record.tools) ? record.tools.filter((tool): tool is string => typeof tool === "string") : [],
+    }];
+  });
+}
+
+function PhaseTurnPager({ turns }: { turns: PhaseTurn[] }) {
+  const [index, setIndex] = useState(0);
+  const turn = turns[Math.min(index, turns.length - 1)];
+  if (!turn) return null;
+  return (
+    <section className="wf-prompt-io">
+      <div className="wf-actions">
+        <button type="button" disabled={index <= 0} onClick={() => setIndex((value) => Math.max(0, value - 1))}>{"<"}</button>
+        <span>Tour {index + 1} / {turns.length}</span>
+        <button type="button" disabled={index >= turns.length - 1} onClick={() => setIndex((value) => Math.min(turns.length - 1, value + 1))}>{">"}</button>
+      </div>
+      <h3>Entrée</h3>
+      <pre className="wf-prompt-text">{turn.input || "—"}</pre>
+      <h3>Sortie</h3>
+      <pre className="wf-prompt-text">{turn.output || "—"}</pre>
+      <h3>Outils</h3>
+      <p>{turn.tools.length > 0 ? turn.tools.join(", ") : "Aucun"}</p>
+    </section>
+  );
+}
+
 function NodeText({ meta }: { meta: Record<string, unknown> }) {
   const content = typeof meta.content === "string" ? meta.content : "";
   const input = typeof meta.inputPrompt === "string" ? meta.inputPrompt : "";
@@ -101,7 +159,9 @@ function NodeText({ meta }: { meta: Record<string, unknown> }) {
 
 function NodeBody({ node, inbound, graphNodes }: { node: AgentGraphNode; inbound: AgentGraphNode[]; graphNodes: AgentGraphNode[] }) {
   const duration = formatDuration(node.startedAt, node.finishedAt);
-  const meta = node.metadata ?? {};
+  const messages = useAgentStore((state) => state.messages);
+  const meta = promptMeta(node.id, node.metadata ?? {}, messages);
+  const turns = readTurns(meta);
   const pending = usePendingApproval(node);
   const enterFocus = useWorkflowStore((state) => state.enterFocus);
   const canvasMode = useWorkflowStore((state) => state.canvasMode);
@@ -114,6 +174,7 @@ function NodeBody({ node, inbound, graphNodes }: { node: AgentGraphNode; inbound
         <h2>{node.label}</h2>
       </header>
       <NodeText meta={meta} />
+      {turns.length > 0 && <PhaseTurnPager key={node.id} turns={turns} />}
       {typeof meta.role === "string" && <p className="wf-role">{meta.role}</p>}
       {canDrill && (
         <p className="wf-muted">Double-click the node, or Enter, to open this graph.</p>

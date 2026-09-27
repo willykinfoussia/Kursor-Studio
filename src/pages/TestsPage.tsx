@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { agentRuntime } from "../lib/agent/AgentRuntime";
 import { countsFromReport, overlayFromInspection } from "../lib/agent/verification";
+import { formatDuration } from "../lib/agent/verification/format";
+import type { ApprovalDecision } from "../lib/agent/permissions/types";
 import { useProjectStore } from "../stores/projectStore";
 import { useVerificationStore } from "../stores/verificationStore";
+import { useAgentStore } from "../stores/agentStore";
 import { useEditorStore } from "../stores/editorStore";
 import { useUiStore } from "../stores/uiStore";
 import { openTests, openWorkflowNode } from "../lib/workflow/navigation";
+import { ApprovalDock } from "../components/agent/blocks/ApprovalDock";
 import { VerificationHeader } from "../components/verification/VerificationHeader";
 import { VerificationHealth } from "../components/verification/VerificationHealth";
 import { VerificationStats } from "../components/verification/VerificationStats";
@@ -23,6 +28,9 @@ export function TestsPage() {
   const lastReport = useVerificationStore((state) => state.lastReport);
   const history = useVerificationStore((state) => state.history);
   const running = useVerificationStore((state) => state.running);
+  const phase = useVerificationStore((state) => state.phase);
+  const startedAt = useVerificationStore((state) => state.startedAt);
+  const activeCommand = useVerificationStore((state) => state.activeCommand);
   const stopping = useVerificationStore((state) => state.stopping);
   const loading = useVerificationStore((state) => state.loading);
   const error = useVerificationStore((state) => state.error);
@@ -45,11 +53,23 @@ export function TestsPage() {
   const select = useVerificationStore((state) => state.select);
   const setEditorOpen = useVerificationStore((state) => state.setEditorOpen);
   const setAddOpen = useVerificationStore((state) => state.setAddOpen);
+  const agentVisible = useUiStore((state) => state.agentVisible);
+  const projectRoot = useProjectStore((state) => state.currentProject?.rootPath);
+  const pendingApprovals = useAgentStore((state) => state.pendingApprovals);
   const [statFilter, setStatFilter] = useState<"checks" | "passed" | "failed" | "skipped" | "blocked">("checks");
+  const [now, setNow] = useState(() => Date.now());
+  const [approvalIndex, setApprovalIndex] = useState(0);
+  const clockOn = running || phase === "launching" || phase === "running" || phase === "approval";
 
   useEffect(() => {
     void refresh();
   }, [refresh, projectId]);
+
+  useEffect(() => {
+    if (!clockOn) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [clockOn]);
 
   const visibleSuite = useMemo(() => {
     if (statFilter === "checks") return suite;
@@ -59,8 +79,19 @@ export function TestsPage() {
   const counts = countsFromReport(lastReport);
   const runnable = suite.filter((item) => item.status !== "disabled" && item.status !== "not-configured");
   const finished = runnable.filter((item) => !isPending(item.status)).length;
-  const current = suite.find((item) => item.id === runningId)?.command ?? suite.find((item) => item.status === "running")?.command;
+  const current = suite.find((item) => item.id === runningId)?.command
+    ?? suite.find((item) => item.status === "running")?.command
+    ?? activeCommand;
+  const elapsed = startedAt && clockOn ? formatDuration(Math.max(0, now - startedAt)) : null;
   const lastVerified = history.find((entry) => !entry.cancelled)?.timestamp ?? history[0]?.timestamp ?? null;
+  const dockApprovals = pendingApprovals.filter((entry) => entry.kind === "permission");
+  const showApproval = !agentVisible && (running || phase === "approval") && dockApprovals.length > 0;
+
+  const resolvePermission = (id: string, decision: ApprovalDecision) => {
+    useAgentStore.getState().resolvePermissionTrace(id, decision === "allow-once" ? "allow-once" : decision);
+    useAgentStore.getState().dequeuePendingApproval(id);
+    agentRuntime.resolvePermission(id, decision);
+  };
 
   const mutateItem = async (item: SuiteItem, action: "disable" | "delete") => {
     if (!inspection) return;
@@ -96,8 +127,10 @@ export function TestsPage() {
       <VerificationHeader
         running={running}
         stopping={stopping}
+        phase={phase}
         progress={running ? `${finished} / ${Math.max(runnable.length, 1)} checks` : null}
         current={current}
+        elapsed={elapsed}
         onRun={() => void runAll()}
         onStop={stop}
         onConfigure={() => setEditorOpen(true)}
@@ -105,6 +138,22 @@ export function TestsPage() {
         disabled={!projectId}
       />
       {error && <div className="cap-error-banner">{error}</div>}
+      {showApproval && (
+        <div className="verify-approval">
+          <ApprovalDock
+            entries={dockApprovals}
+            index={approvalIndex}
+            onIndexChange={setApprovalIndex}
+            workingDirectory={projectRoot}
+            onDeny={(id) => resolvePermission(id, "deny")}
+            onAllowOnce={(id) => resolvePermission(id, "allow-once")}
+            onAllowTask={(id) => resolvePermission(id, "allow-task")}
+            onAllowPermanent={(id) => resolvePermission(id, "allow-permanent")}
+            onApprovePlan={() => undefined}
+            onRejectPlan={() => undefined}
+          />
+        </div>
+      )}
       {!projectId ? (
         <div className="verify-empty">
           <h3>No project open</h3>
@@ -141,6 +190,9 @@ export function TestsPage() {
                 <button type="button" className="verify-details-backdrop" aria-label="Close details" onClick={() => select(null)} />
                 <VerificationDetails
                   item={selected}
+                  phase={phase}
+                  elapsed={elapsed}
+                  startedAt={startedAt}
                   trigger={trigger}
                   requestId={requestId}
                   executedAt={lastVerified}

@@ -3,6 +3,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { agentRuntime } from "../../lib/agent/AgentRuntime";
 import { hydrateConversations, hydrateTasks } from "../../lib/storage/session";
 import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
+import { useVerificationEvents } from "../../hooks/useVerificationEvents";
 import { useRunObservability } from "../../hooks/useRunObservability";
 import { useProjectWatcher } from "../../hooks/useProjectWatcher";
 import { useAccountSpecsWatcher } from "../../hooks/useAccountSpecsWatcher";
@@ -70,6 +71,7 @@ function CurrentPage() {
 
 export function AppShell({ onClone, onNew }: { onClone: () => void; onNew: () => void }) {
   useKeyboardShortcuts();
+  useVerificationEvents();
   useRunObservability();
   useProjectWatcher();
   useAccountSpecsWatcher();

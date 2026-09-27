@@ -135,7 +135,11 @@ describe("applyProposal", () => {
       },
     }), { skills, files });
     expect(created.specs[0]).toBe(".kursor/specs/project/technical/auth.md");
-    expect(files.files.get(created.specs[0])).toBe("# Auth\nUse refresh tokens.");
+    const written = files.files.get(created.specs[0]) ?? "";
+    expect(written.startsWith("---\n")).toBe(true);
+    expect(written).toContain("scope: project");
+    expect(written).toContain("type: technical");
+    expect(written).toContain("# Auth\nUse refresh tokens.");
 
     await applyProposal(proposal({
       payload: {
@@ -185,6 +189,27 @@ describe("applyProposal", () => {
       },
     }), { skills, files });
     expect(files.files.has(moved.specs[0])).toBe(false);
+  });
+
+  it("keeps frontmatter that the spec already contains", async () => {
+    const files = memoryGraph();
+    const body = "---\nscope: project\ntype: ui\ntitle: Cart\n---\n\n# Cart\nKeep me.";
+    const created = await applyProposal(proposal({
+      payload: {
+        summary: "Cart",
+        skillActions: [],
+        specActions: [{
+          id: "spec:0:cart.md",
+          action: "create",
+          scope: "project",
+          kind: "ui",
+          fileName: "cart.md",
+          rationale: "UI",
+          content: body,
+        }],
+      },
+    }), { files });
+    expect(files.files.get(created.specs[0])).toBe(body);
   });
 
   it("applies only selected actions", async () => {

@@ -1,3 +1,15 @@
+export type VerificationPhase = "idle" | "launching" | "running" | "approval" | "finished" | "stopped" | "error";
+
+export function verificationPhaseLabel(phase: VerificationPhase): string | null {
+  if (phase === "launching") return "Launching…";
+  if (phase === "running") return "Running…";
+  if (phase === "approval") return "Waiting for approval";
+  if (phase === "finished") return "Finished";
+  if (phase === "stopped") return "Stopped";
+  if (phase === "error") return "Could not start";
+  return null;
+}
+
 export function formatDuration(ms?: number | null): string | null {
   if (ms == null || !Number.isFinite(ms)) return null;
   if (ms < 1000) return `${Math.round(ms)}ms`;

@@ -2,6 +2,7 @@ import { useAgentStore } from "../../stores/agentStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { activePlan, planByPath, usePlanStore } from "../../stores/planStore";
 import { bindContinuingProjectPlan } from "./plans/bindProjectPlan";
+import { isBuildPlanPrompt } from "./plans/isBuildPlanPrompt";
 import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import type { CustomAIModel } from "../../types/settings";
@@ -99,7 +100,7 @@ import { gitApi } from "../tauri/githubApi";
 import { projectApi } from "../tauri/projectApi";
 import { isDetachedGitBranch, sanitizeAgentBranchName } from "./tools/gitBranch";
 import { WorkflowSessionState, shouldCloseImplementationCycle } from "./workflow/sessionState";
-import { isAffirmativeReply } from "./workflow/approvalLanguage";
+import { explicitDesignYes, isAffirmativeReply } from "./workflow/approvalLanguage";
 import { classifyTurn, SAFE_TURN_VERDICT, type TurnReply } from "./workflows/turnClassifier";
 import { isPlanDocumentWrite, pathFromToolInput, trackedMutationPath } from "./workflow/planPath";
 import {
@@ -275,6 +276,7 @@ export class AgentRuntime {
   readonly workflowSession = new WorkflowSessionState();
   readonly sessionGrants = new TaskGrantStore();
   private readonly questionWaiters = new Map<string, (answer: UserQuestionAnswer) => void>();
+  private readonly questionKinds = new Map<string, string | undefined>();
 
   constructor(dependencies: AgentRuntimeDependencies) {
     this.modelRouter = dependencies.modelRouter ?? new ModelRouter();
@@ -410,6 +412,7 @@ export class AgentRuntime {
           policy: settings.modelPolicy,
         };
       },
+      readFile: (path) => graphService.getFiles().readFile(path),
       applyProposal: async (proposal) => {
         const projectId = this.getProjectId();
         await applyProposal(proposal, {
@@ -635,8 +638,9 @@ export class AgentRuntime {
         this.lastRunId = crypto.randomUUID();
         this.runToolNames = [];
         this.runFilePaths = [];
+        const title = humanTaskTitle(text, this.messages);
         const task = await this.tasks.create({
-          title: text,
+          title,
           projectId: this.getProjectId(),
           description: text,
         });
@@ -690,7 +694,7 @@ export class AgentRuntime {
         type: "turn-classified",
         goalKind: this.workflowSession.goalKind,
         complexity: this.workflowSession.complexity,
-        reply: verdict.reply,
+        reply: this.workflowSession.turnReply,
         skipProcess: this.workflowSession.skipProcess,
         continuation: verdict.continuation,
         modelTask: this.workflowSession.modelTask,
@@ -1136,6 +1140,7 @@ export class AgentRuntime {
     const question = this.questionWaiters.get(id);
     if (question) {
       this.questionWaiters.delete(id);
+      this.questionKinds.delete(id);
       this.emit({ type: "approval-resolved", id, kind: "workflow", decision });
       this.resumeAfterApproval();
       question({
@@ -1188,10 +1193,25 @@ export class AgentRuntime {
     const verdict = this.workflowSession.subagent
       ? SAFE_TURN_VERDICT
       : await classifyTurn(this.aiService, this.turnClassifierInput(selected));
-    const allow = isAffirmativeReply(verdict.reply);
+    const questionKind = this.questionKinds.get(id);
+    this.questionKinds.delete(id);
+    let reply = verdict.reply;
+    if (questionKind === "design" && reply !== "design_no" && explicitDesignYes(selected)) {
+      reply = "design_yes";
+    }
+    const allow = isAffirmativeReply(reply);
+    this.emit({
+      type: "turn-classified",
+      goalKind: verdict.goalKind,
+      complexity: verdict.complexity,
+      reply,
+      skipProcess: verdict.skipProcess === "skip",
+      continuation: verdict.continuation,
+      modelTask: verdict.modelTask,
+    });
     this.emit({ type: "approval-resolved", id, kind: "workflow", decision: allow ? "allow" : "deny", selected });
     this.resumeAfterApproval();
-    waiter({ selected, allow, reply: verdict.reply });
+    waiter({ selected, allow, reply });
   }
 
   setInteractionMode(mode: AgentInteractionMode) {
@@ -1266,6 +1286,7 @@ export class AgentRuntime {
       summary: request.prompt,
       options: choices,
     });
+    this.questionKinds.set(request.id, request.kind);
     return new Promise((resolve) => {
       this.questionWaiters.set(request.id, resolve);
     });
@@ -1767,6 +1788,18 @@ function runtimeFiles() {
   };
 }
 
+function humanTaskTitle(text: string, messages: readonly { role: string; content: string }[]): string {
+  if (!isBuildPlanPrompt(text)) return text;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "user") continue;
+    const content = message.content.trim();
+    if (!content || content === text || isBuildPlanPrompt(content)) continue;
+    return content;
+  }
+  return text;
+}
+
 function recoveryFiles() {
   return {
     readFile: (path: string) => fileSystemService.readFile(path),
@@ -1780,6 +1813,9 @@ registerBuiltinTools(toolRegistry);
 function tagSubagentToolEvent(event: AgentEvent, taskId: string, agentId: string): AgentEvent {
   if (event.type === "tool-started" || event.type === "tool-completed") {
     return { ...event, taskId, agentId };
+  }
+  if (event.type === "step-started" || event.type === "assistant-message") {
+    return { ...event, agentId };
   }
   return event;
 }

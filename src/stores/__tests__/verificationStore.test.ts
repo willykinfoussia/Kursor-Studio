@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileInspection, VerificationProfile } from "../../lib/agent/verification/types";
+import { agentRuntime } from "../../lib/agent/AgentRuntime";
 
 const { persist, saveOverlay } = vi.hoisted(() => ({
   persist: vi.fn(),
@@ -41,6 +42,14 @@ describe("verificationStore", () => {
   beforeEach(() => {
     persist.mockReset();
     saveOverlay.mockReset();
+    vi.mocked(agentRuntime.runVerification).mockReset();
+    vi.mocked(agentRuntime.runVerification).mockResolvedValue({
+      ok: true,
+      attempts: 1,
+      results: [],
+      blockers: [],
+      missingFiles: [],
+    });
     saveOverlay.mockImplementation(async (overlay: VerificationProfile) => ({
       ...inspection,
       overlay,
@@ -54,6 +63,9 @@ describe("verificationStore", () => {
       runningId: null,
       requestId: null,
       trigger: null,
+      phase: "idle",
+      startedAt: null,
+      activeCommand: null,
       running: false,
       stopping: false,
       loading: false,
@@ -106,6 +118,7 @@ describe("verificationStore", () => {
       trigger: "manual",
     });
     expect(useVerificationStore.getState().running).toBe(false);
+    expect(useVerificationStore.getState().phase).toBe("finished");
     expect(useVerificationStore.getState().health).toBe("verified");
     expect(useVerificationStore.getState().suite.find((item) => item.kind === "test")?.status).toBe("passed");
     expect(persist).not.toHaveBeenCalled();
@@ -137,6 +150,55 @@ describe("verificationStore", () => {
     expect(state.suite.find((item) => item.kind === "test")?.status).toBe("blocked");
     expect(state.suite.find((item) => item.kind === "test")?.status).not.toBe("skipped");
     expect(persist).toHaveBeenCalled();
+  });
+
+  it("opens the check as soon as a manual run starts", async () => {
+    vi.mocked(agentRuntime.runVerification).mockImplementation(async () => {
+      const state = useVerificationStore.getState();
+      expect(state.phase).toBe("launching");
+      expect(state.running).toBe(true);
+      expect(state.detailsOpen).toBe(true);
+      expect(state.selectedId).toBe("standard:test");
+      expect(state.activeCommand).toBe("pnpm test");
+      expect(state.suite.find((item) => item.id === "standard:test")?.status).toBe("running");
+    });
+    await useVerificationStore.getState().runItem({
+      id: "standard:test",
+      kind: "test",
+      name: "Test",
+      command: "pnpm test",
+      origin: "auto",
+      status: "idle",
+    });
+    expect(agentRuntime.runVerification).toHaveBeenCalledWith({ kinds: ["test"] });
+  });
+
+  it("follows the running check and records approval", () => {
+    const store = useVerificationStore.getState();
+    store.applyEvent({ type: "verification-started", requestId: "r1", trigger: "manual" });
+    store.applyEvent({ type: "verification-check-started", requestId: "r1", kind: "test", command: "pnpm test" });
+    expect(useVerificationStore.getState().phase).toBe("running");
+    expect(useVerificationStore.getState().detailsOpen).toBe(true);
+    expect(useVerificationStore.getState().activeCommand).toBe("pnpm test");
+    useVerificationStore.getState().noteApproval(true);
+    expect(useVerificationStore.getState().phase).toBe("approval");
+    useVerificationStore.getState().noteApproval(false);
+    expect(useVerificationStore.getState().phase).toBe("running");
+  });
+
+  it("marks a cancelled run as stopped", () => {
+    useVerificationStore.getState().applyEvent({
+      type: "verification-completed",
+      requestId: "r1",
+      ok: false,
+      blockers: [],
+      commands: [],
+      attempt: 1,
+      cancelled: true,
+      trigger: "manual",
+    });
+    expect(useVerificationStore.getState().phase).toBe("stopped");
+    expect(useVerificationStore.getState().running).toBe(false);
   });
 
   it("saves overlay without copying auto commands", async () => {

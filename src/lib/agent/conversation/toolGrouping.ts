@@ -20,7 +20,8 @@ export interface ToolLookup {
 
 export type TimelineViewItem =
   | { kind: "item"; item: ConversationItem }
-  | { kind: "tool-group"; id: string; family: ToolFamily; items: Extract<ConversationItem, { type: "tool" }>[] };
+  | { kind: "tool-group"; id: string; family: ToolFamily; items: Extract<ConversationItem, { type: "tool" }>[] }
+  | { kind: "question-chain"; id: string; items: Extract<ConversationItem, { type: "user-question" }>[] };
 
 export interface ToolGroupSummary {
   family: ToolFamily;
@@ -94,7 +95,71 @@ export function groupTimelineItems(
     buffer.push(item);
   }
   flush();
-  return views;
+  return groupQuestionChains(views);
+}
+
+const QUESTION_CHAIN_BREAKS = new Set<ConversationItem["type"]>([
+  "user",
+  "plan",
+  "plan-card",
+  "task",
+  "verification",
+  "completion",
+]);
+
+function isQuestionChainBreak(view: TimelineViewItem) {
+  return view.kind === "item" && QUESTION_CHAIN_BREAKS.has(view.item.type);
+}
+
+/** Consecutive user questions become one chain, anchored on the last question. */
+export function groupQuestionChains(views: TimelineViewItem[]): TimelineViewItem[] {
+  const next: TimelineViewItem[] = [];
+  let questions: Extract<ConversationItem, { type: "user-question" }>[] = [];
+  let gaps: TimelineViewItem[][] = [];
+
+  const flush = () => {
+    if (questions.length === 0) return;
+    if (questions.length === 1) {
+      const only = questions[0];
+      if (only) next.push({ kind: "item", item: only });
+      next.push(...(gaps[0] ?? []));
+    } else {
+      const first = questions[0];
+      for (let index = 0; index < questions.length - 1; index += 1) {
+        next.push(...(gaps[index] ?? []));
+      }
+      if (first) {
+        next.push({
+          kind: "question-chain",
+          id: `question-chain:${first.id}`,
+          items: questions,
+        });
+      }
+      next.push(...(gaps[questions.length - 1] ?? []));
+    }
+    questions = [];
+    gaps = [];
+  };
+
+  for (const view of views) {
+    if (view.kind === "item" && view.item.type === "user-question") {
+      questions.push(view.item);
+      gaps.push([]);
+      continue;
+    }
+    if (questions.length > 0 && isQuestionChainBreak(view)) {
+      flush();
+      next.push(view);
+      continue;
+    }
+    if (questions.length > 0) {
+      gaps[gaps.length - 1]?.push(view);
+      continue;
+    }
+    next.push(view);
+  }
+  flush();
+  return next;
 }
 
 function uniqueStrings(values: string[]) {

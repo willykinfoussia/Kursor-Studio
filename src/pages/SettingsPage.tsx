@@ -32,12 +32,16 @@ function SettingRow({ label, description, children }: { label: string; descripti
 
 function YoloAndWhitelistControls() {
   const yoloMode = useSettingsStore((state) => state.yoloMode);
+  const allowEnvFiles = useSettingsStore((state) => state.allowEnvFiles);
   const whitelist = useSettingsStore((state) => state.permissionWhitelist);
   const update = useSettingsStore((state) => state.update);
   return (
     <>
       <SettingRow label="Yolo mode" description="Allow all agent tool calls without asking. Protected files and blocked commands stay denied.">
         <Toggle checked={yoloMode} label="Yolo mode" onChange={(value) => update("yoloMode", value)} />
+      </SettingRow>
+      <SettingRow label="Allow .env files" description="Let the agent read .env and .env.* files. .git, credentials.json, .pem and .key stay protected.">
+        <Toggle checked={allowEnvFiles} label="Allow .env files" onChange={(value) => update("allowEnvFiles", value)} />
       </SettingRow>
       <div className="setting-stack">
         <div className="setting-label">Permanent allows</div>

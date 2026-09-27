@@ -24,6 +24,15 @@ describe("protectedPaths", () => {
     expect(isProtectedPath(".env.template", "read")).toBe(false);
   });
 
+  it("allows env reads when allowEnvFiles is set and keeps other secrets protected", () => {
+    const allow = { allowEnvFiles: true };
+    expect(isProtectedPath(".env", "read", allow)).toBe(false);
+    expect(isProtectedPath("app/.env.local", "read", allow)).toBe(false);
+    expect(isProtectedPath("credentials.json", "write", allow)).toBe(true);
+    expect(isProtectedPath("id_rsa.pem", "write", allow)).toBe(true);
+    expect(isProtectedPath(".git/config", "write", allow)).toBe(true);
+  });
+
   it("does not treat cwd as a file path for secrets", () => {
     expect(inputFilePath({ cwd: ".env.local", command: "pnpm test" })).toBeUndefined();
     expect(inputCwd({ cwd: "tinder-clone" })).toBe("tinder-clone");

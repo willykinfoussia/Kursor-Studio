@@ -10,6 +10,7 @@ import type {
   PermissionMode,
   PermissionRule,
 } from "./permissions/types";
+import { useSettingsStore } from "../../stores/settingsStore";
 import { inputCwd, inputFilePath, isProtectedPath, pathAccessForTool } from "./tools/protectedPaths";
 import type { AgentTool, ToolRegistry } from "./ToolRegistry";
 
@@ -160,7 +161,7 @@ export class PermissionManager {
     const cwd = inputCwd(input);
     if (filePath) {
       const access = pathAccessForTool(toolName, tool.capability);
-      if (isProtectedPath(filePath, access)) {
+      if (isProtectedPath(filePath, access, { allowEnvFiles: useSettingsStore.getState().allowEnvFiles })) {
         return { decision: "deny", reason: `Path "${filePath}" is protected.` };
       }
     }

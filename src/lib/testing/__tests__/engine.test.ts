@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { CheckRunner } from "../../agent/verification/types";
+import type { CheckRunner, VerificationReport } from "../../agent/verification/types";
 import { testingLevelsFor } from "../../agent/verification/whenToRun";
+import { mergeTestingReport } from "../bridge";
 import { constrainDecision, policyDecision } from "../decide";
+import type { ProjectDiscovery, TestCase, TestRun, TestStrategyDecision } from "../domain";
 import { discoverProject, memoryFileStore } from "../discover";
 import { TestingEngine } from "../engine";
 import { parseCoverageSummary, PlaywrightRunner, VitestRunner } from "../runners";
@@ -132,6 +134,17 @@ describe("runners", () => {
     });
     expect(playwright[0]).toMatchObject({ type: "E2E", status: "PASSED", name: "UC-001 login" });
 
+    const emptyIntegration = new VitestRunner().parseResults({
+      command: "pnpm exec vitest run --reporter=json **/*.integration.test.ts tests/integration --passWithNoTests",
+      exitCode: 1,
+      stdout: "",
+      stderr: "No test files found, exiting with code 1",
+      startedAt: 3,
+    }, "integration");
+    expect(emptyIntegration).toEqual([
+      expect.objectContaining({ status: "SKIPPED", name: "vitest integration suite", type: "INTEGRATION" }),
+    ]);
+
     expect(parseCoverageSummary(JSON.stringify({
       total: { lines: { pct: 82.4 }, branches: { pct: 70 }, functions: { pct: 90 }, statements: { pct: 81 } },
     }))).toEqual({ lines: 82.4, branches: 70, functions: 90, statements: 81 });
@@ -166,6 +179,7 @@ describe("TestingEngine", () => {
     expect(run.commitSha).toBe("abc123def4567890");
     expect(run.branch).toBe("main");
     expect(run.results.some((result) => result.case.userCaseId === "UC-001")).toBe(true);
+    expect(run.commandLog.map((entry) => entry.level)).toEqual(["unit", "integration", "e2e"]);
     const monitoring = await store.query({ projectId: "p1", taskId: "task-1" });
     expect(monitoring.runs).toHaveLength(1);
     expect(monitoring.userCases[0]?.id).toBe("UC-001");
@@ -189,6 +203,96 @@ describe("TestingEngine", () => {
     await engine.runE2ETests({ projectId: "p1" });
     expect(commands.some((command) => command.includes("pnpm add"))).toBe(false);
     expect(commands.some((command) => command.includes("playwright test"))).toBe(true);
+  });
+});
+
+describe("empty integration suite", () => {
+  it("filters integration files and passes when none exist", async () => {
+    const commands: string[] = [];
+    const runner: CheckRunner = {
+      async run(command) {
+        commands.push(command);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    };
+    const discovery = {
+      markers: [],
+      scripts: {},
+      packageManager: "pnpm",
+    } as ProjectDiscovery;
+    const vitest = new VitestRunner();
+    const ctx = { runner, packageManager: "pnpm" as const, cwd: "", runId: "r1", discovery };
+    await vitest.run(ctx, "unit");
+    await vitest.run(ctx, "integration");
+    const unit = commands[0] ?? "";
+    const integration = commands[1] ?? "";
+    expect(unit).toContain("--exclude **/*.integration.test.ts");
+    expect(unit).toContain("--exclude **/*.e2e.test.ts");
+    expect(unit).not.toContain("--passWithNoTests");
+    expect(integration).toContain("**/*.integration.test.ts");
+    expect(integration).toContain("tests/integration");
+    expect(integration).toContain("--passWithNoTests");
+    expect(integration).not.toContain("--exclude");
+  });
+
+  it("keeps verification green when integration has no files", () => {
+    const unitCommand = "pnpm exec vitest run --reporter=json --exclude **/*.integration.test.ts --exclude **/*.e2e.test.ts";
+    const integrationCommand = "pnpm exec vitest run --reporter=json **/*.integration.test.ts tests/integration --passWithNoTests";
+    const passed: TestCase = {
+      id: "vitest:tests/menu.test.ts:lists drinks",
+      name: "lists drinks",
+      description: "lists drinks",
+      type: "UNIT",
+      framework: "vitest",
+      runner: "vitest",
+      status: "PASSED",
+    };
+    const skipped: TestCase = {
+      id: "vitest:integration:suite",
+      name: "vitest integration suite",
+      description: integrationCommand,
+      type: "INTEGRATION",
+      framework: "vitest",
+      runner: "vitest",
+      status: "SKIPPED",
+    };
+    const run: TestRun = {
+      id: "run-1",
+      projectId: "p1",
+      timestamp: 1,
+      environment: "node/pnpm",
+      status: "PASSED",
+      durationMs: 12,
+      levels: ["unit", "integration"],
+      results: [
+        { id: "run-1:unit", runId: "run-1", projectId: "p1", case: passed },
+        { id: "run-1:integration", runId: "run-1", projectId: "p1", case: skipped },
+      ],
+      artifacts: [],
+      commandLog: [
+        { command: unitCommand, cwd: "", exitCode: 0, stdout: "", stderr: "", timestamp: 1, level: "unit" },
+        { command: integrationCommand, cwd: "", exitCode: 0, stdout: "", stderr: "No test files found", timestamp: 2, level: "integration" },
+      ],
+    };
+    const strategy: TestStrategyDecision = {
+      applicationType: "web",
+      unit: { testLevel: "unit", applicationType: "web", runner: "vitest", action: "use_existing", reasons: [] },
+      integration: { testLevel: "integration", applicationType: "web", runner: "vitest", action: "use_existing", reasons: [] },
+      e2e: { testLevel: "e2e", applicationType: "web", runner: null, action: "not_applicable", reasons: [] },
+      reasons: [],
+    };
+    const harness: VerificationReport = { ok: true, attempts: 1, results: [], blockers: [], missingFiles: [] };
+    const report = mergeTestingReport(harness, run, strategy, ["unit", "integration"]);
+    const integration = report.results.find((result) => result.name === "integration");
+    expect(integration).toMatchObject({
+      ok: true,
+      skipped: true,
+      diagnosis: "integration skipped: no test files",
+      command: integrationCommand,
+    });
+    expect(integration?.command).not.toContain("--exclude");
+    expect(report.ok).toBe(true);
+    expect(report.blockers).toEqual([]);
   });
 });
 

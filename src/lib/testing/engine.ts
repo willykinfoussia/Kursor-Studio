@@ -128,7 +128,7 @@ export class TestingEngine {
           await runner.install(this.context(discovery, run.id, input.signal));
         }
         const raw = await runner.run(this.context(discovery, run.id, input.signal), level);
-        run.commandLog.push(commandLog(raw, this.options.cwd ?? "", git.commitSha));
+        run.commandLog.push(commandLog(raw, level, this.options.cwd ?? "", git.commitSha));
         const cases = linkCases(runner.parseResults(raw, level), userCases, input.taskId);
         const artifacts = (await runner.collectArtifacts(this.context(discovery, run.id, input.signal), raw))
           .map((artifact) => ({ ...artifact, runId: run.id, id: `${run.id}:${artifact.id}` }));
@@ -308,7 +308,7 @@ function toResult(run: TestRun, item: TestCase): TestResult {
   };
 }
 
-function commandLog(raw: { command: string; exitCode: number | null; stdout: string; stderr: string; startedAt: number }, cwd: string, commitSha: string | null): CommandLog {
+function commandLog(raw: { command: string; exitCode: number | null; stdout: string; stderr: string; startedAt: number }, level: TestLevel, cwd: string, commitSha: string | null): CommandLog {
   return {
     command: raw.command,
     cwd,
@@ -317,6 +317,7 @@ function commandLog(raw: { command: string; exitCode: number | null; stdout: str
     stderr: raw.stderr.slice(0, 20_000),
     timestamp: raw.startedAt,
     commitSha,
+    level,
   };
 }
 

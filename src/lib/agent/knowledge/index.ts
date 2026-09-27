@@ -1,7 +1,15 @@
 export type { KnowledgeCatalogItem } from "./prompt";
-export { buildKnowledgeReflectUserPrompt, KNOWLEDGE_REFLECT_SYSTEM } from "./prompt";
+export { collectProductExcerpts } from "./excerpts";
+export type { FileExcerpt } from "./excerpts";
+export {
+  buildKnowledgeReflectUserPrompt,
+  buildSpecAuthorUserPrompt,
+  KNOWLEDGE_REFLECT_SYSTEM,
+  SPEC_AUTHOR_SYSTEM,
+} from "./prompt";
 export { parseKnowledgeReflectResult, hasKnowledgeActions, extractJsonObject, specFileNameFromLabel } from "./schema";
-export { withFallbackProductSpec, fallbackProductSpec } from "./fallbackSpec";
+export { withFallbackProductSpec, fallbackProductSpec, adoptProductSpec } from "./fallbackSpec";
+export { isSubstantialSpec, ensureSpecFrontmatter } from "./specDocument";
 export {
   shouldSkipKnowledgeReflect,
   hasProductFileChanges,

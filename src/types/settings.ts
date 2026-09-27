@@ -20,6 +20,7 @@ export interface AppSettings {
   permissionMode: PermissionMode;
   confirmDestructive: boolean;
   yoloMode: boolean;
+  allowEnvFiles: boolean;
   permissionWhitelist: PermissionRule[];
   terminalShell: string;
   autoSave: boolean;

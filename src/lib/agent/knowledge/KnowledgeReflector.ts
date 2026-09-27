@@ -3,12 +3,27 @@ import { routeModels } from "../routing";
 import { listAvailableModels } from "../config";
 import type { AgentEvent, AgentMessage, AIModel } from "../types";
 import { collectKnowledgeCatalog } from "./catalog";
-import { shouldSkipKnowledgeReflect } from "./gates";
+import { collectProductExcerpts, type FileExcerpt } from "./excerpts";
+import { shouldSkipKnowledgeReflect, hasProductFileChanges } from "./gates";
 import { knowledgeProposalStore, type KnowledgeProposalStore } from "./KnowledgeProposalStore";
-import { buildKnowledgeReflectUserPrompt, KNOWLEDGE_REFLECT_SYSTEM } from "./prompt";
+import {
+  buildKnowledgeReflectUserPrompt,
+  buildSpecAuthorUserPrompt,
+  KNOWLEDGE_REFLECT_SYSTEM,
+  SPEC_AUTHOR_SYSTEM,
+  type KnowledgeCatalogItem,
+} from "./prompt";
 import { hasKnowledgeActions, parseKnowledgeReflectResult } from "./schema";
-import { withFallbackProductSpec } from "./fallbackSpec";
-import type { KnowledgeProposal, KnowledgeReflectInput } from "./types";
+import { adoptProductSpec, withFallbackProductSpec } from "./fallbackSpec";
+import {
+  authorFileName,
+  ensureSpecFrontmatter,
+  hasSubstantialProductSpec,
+  isSubstantialSpec,
+  parseSpecAuthorResult,
+  projectSpecKind,
+} from "./specDocument";
+import type { KnowledgeProposal, KnowledgeReflectInput, KnowledgeReflectResult, SpecProposalAction } from "./types";
 
 export interface KnowledgeReflectorOptions {
   ai?: AIService;
@@ -20,6 +35,7 @@ export interface KnowledgeReflectorOptions {
   id?: () => string;
   catalog?: typeof collectKnowledgeCatalog;
   applyProposal?: (proposal: KnowledgeProposal) => Promise<void>;
+  readFile?: (path: string) => Promise<string>;
 }
 
 function errorText(error: unknown): string {
@@ -38,6 +54,7 @@ export class KnowledgeReflector {
   private readonly id: () => string;
   private readonly catalog: typeof collectKnowledgeCatalog;
   private readonly applyProposal?: (proposal: KnowledgeProposal) => Promise<void>;
+  private readonly readFile?: (path: string) => Promise<string>;
 
   constructor(options: KnowledgeReflectorOptions = {}) {
     this.ai = options.ai;
@@ -49,6 +66,7 @@ export class KnowledgeReflector {
     this.id = options.id ?? (() => crypto.randomUUID());
     this.catalog = options.catalog ?? collectKnowledgeCatalog;
     this.applyProposal = options.applyProposal;
+    this.readFile = options.readFile;
   }
 
   bindAi(ai: AIService) {
@@ -85,8 +103,13 @@ export class KnowledgeReflector {
     this.inFlight.add(input.conversationId);
     this.emit({ type: "knowledge-reflect-started", runId: input.runId });
     try {
-      const result = await this.complete(input);
-      const parsed = withFallbackProductSpec(parseKnowledgeReflectResult(result), input);
+      const excerpts = await this.loadExcerpts(input.filesChanged);
+      const catalog = await this.catalog(Boolean(input.projectId));
+      const result = await this.completeText(
+        KNOWLEDGE_REFLECT_SYSTEM,
+        buildKnowledgeReflectUserPrompt(input, catalog, excerpts),
+      );
+      const parsed = await this.ensureProductSpec(parseKnowledgeReflectResult(result), input, catalog, excerpts);
       const now = this.now();
       const proposal: KnowledgeProposal = {
         id: this.id(),
@@ -131,10 +154,57 @@ export class KnowledgeReflector {
     }
   }
 
-  private async complete(input: KnowledgeReflectInput): Promise<string> {
+  private async loadExcerpts(paths: readonly string[]): Promise<FileExcerpt[]> {
+    if (!this.readFile) return [];
+    return collectProductExcerpts(paths, this.readFile);
+  }
+
+  private async ensureProductSpec(
+    parsed: KnowledgeReflectResult,
+    input: KnowledgeReflectInput,
+    catalog: readonly KnowledgeCatalogItem[],
+    excerpts: readonly FileExcerpt[],
+  ): Promise<KnowledgeReflectResult> {
+    if (input.planUnfinished || !hasProductFileChanges(input.filesChanged)) return parsed;
+    if (hasSubstantialProductSpec(parsed)) return withFallbackProductSpec(parsed, input);
+    try {
+      const authored = await this.authorProductSpec(input, catalog, excerpts);
+      if (authored) return adoptProductSpec(parsed, authored, input);
+    } catch {
+      // The author model failed; the structured skeleton still records the run.
+    }
+    return withFallbackProductSpec(parsed, input);
+  }
+
+  private async authorProductSpec(
+    input: KnowledgeReflectInput,
+    catalog: readonly KnowledgeCatalogItem[],
+    excerpts: readonly FileExcerpt[],
+  ): Promise<SpecProposalAction | null> {
+    const text = await this.completeText(SPEC_AUTHOR_SYSTEM, buildSpecAuthorUserPrompt(input, catalog, excerpts));
+    const authored = parseSpecAuthorResult(text);
+    if (!authored || !isSubstantialSpec(authored.content)) return null;
+    const kind = projectSpecKind(authored.kind);
+    const fileName = authorFileName(authored.fileName ?? "", input.goal);
+    return {
+      id: "spec:author:architecture",
+      action: "create",
+      scope: "project",
+      kind,
+      fileName,
+      rationale: "Product files were implemented; record the architecture.",
+      content: ensureSpecFrontmatter(authored.content, {
+        scope: "project",
+        kind,
+        fileName,
+        title: authored.title,
+      }),
+    };
+  }
+
+  private async completeText(systemPrompt: string, content: string): Promise<string> {
     const service = this.ai;
     if (!service?.completeText) throw new Error("no-llm");
-    const catalog = await this.catalog(Boolean(input.projectId));
     const models = this.getModels?.() ?? { ordered: listAvailableModels() };
     const routed = routeModels({
       goal: "summarize durable knowledge from the finished run",
@@ -150,7 +220,7 @@ export class KnowledgeReflector {
     const user: AgentMessage = {
       id: "knowledge-reflect",
       role: "user",
-      content: buildKnowledgeReflectUserPrompt(input, catalog),
+      content,
       timestamp: this.now(),
     };
     let lastError: unknown;
@@ -158,7 +228,7 @@ export class KnowledgeReflector {
       try {
         const result = await service.completeText([user], {
           model,
-          systemPrompt: KNOWLEDGE_REFLECT_SYSTEM,
+          systemPrompt,
           json: true,
         });
         return result?.text ?? "";

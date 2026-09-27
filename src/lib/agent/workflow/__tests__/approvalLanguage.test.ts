@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { isAffirmativeReply, isDesignApprovalReply, isDesignRejectionReply } from "../approvalLanguage";
+import { explicitDesignYes, isAffirmativeReply, isDesignApprovalReply, isDesignRejectionReply } from "../approvalLanguage";
+
+describe("explicitDesignYes", () => {
+  it("accepts a short yes, including Yes, approve and Yes, create the plan now", () => {
+    expect(explicitDesignYes("oui")).toBe(true);
+    expect(explicitDesignYes("Yes, approve")).toBe(true);
+    expect(explicitDesignYes("Yes, proceed")).toBe(true);
+    expect(explicitDesignYes("Oui, j'approuve")).toBe(true);
+    expect(explicitDesignYes("Yes, create the plan now")).toBe(true);
+  });
+
+  it("rejects ok, d'accord, and a yes with a hedge", () => {
+    expect(explicitDesignYes("ok")).toBe(false);
+    expect(explicitDesignYes("d'accord")).toBe(false);
+    expect(explicitDesignYes("oui mais change la stack")).toBe(false);
+  });
+});
 
 describe("approval replies", () => {
   it("treats a design yes as affirmative and as design approval", () => {

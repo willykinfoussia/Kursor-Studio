@@ -11,7 +11,11 @@ export function pathAccessForTool(tool?: string, capability?: string): PathAcces
   return "write";
 }
 
-export function isProtectedPath(relativePath: string, access: PathAccess = "read"): boolean {
+export function isProtectedPath(
+  relativePath: string,
+  access: PathAccess = "read",
+  options?: { allowEnvFiles?: boolean },
+): boolean {
   const normalized = normalizeRelativePath(relativePath).toLowerCase();
   if (!normalized || normalized === ".") return false;
   const parts = normalized.split("/");
@@ -20,6 +24,7 @@ export function isProtectedPath(relativePath: string, access: PathAccess = "read
   if (ALWAYS_PROTECTED_NAMES.has(name)) return true;
   if (name.endsWith(".pem") || name.endsWith(".key")) return true;
   if (name === ".env" || name.startsWith(".env.")) {
+    if (options?.allowEnvFiles) return false;
     if (access === "write") return false;
     return !ENV_READ_ALLOW.has(name);
   }

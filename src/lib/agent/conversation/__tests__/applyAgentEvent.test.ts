@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAgentEvent, DESIGN_APPROVED_NOTICE, timelineFromMessages } from "../applyAgentEvent";
+import { applyAgentEvent, DESIGN_APPROVED_NOTICE, formatTurnClassifiedNotice, timelineFromMessages } from "../applyAgentEvent";
 import { CHAT_EVENT_POLICY } from "../chatPolicy";
 import type { AgentEvent, AgentMessage } from "../../types";
 import type { ConversationItem } from "../types";
@@ -264,6 +264,28 @@ describe("applyAgentEvent", () => {
     ]);
     expect(items.map((item) => item.type)).toEqual(["user", "tool", "assistant"]);
     expect(items[2]).toMatchObject({ type: "assistant", content: "Done." });
+  });
+
+  it("renders a turn-classified verdict as a mode notice", () => {
+    const event = {
+      type: "turn-classified" as const,
+      goalKind: "build" as const,
+      complexity: "complex" as const,
+      reply: "design_yes" as const,
+      skipProcess: false,
+      continuation: "new" as const,
+      modelTask: "planning" as const,
+    };
+    const items = applyAgentEvent([], event);
+    expect(items).toEqual([
+      {
+        type: "system",
+        id: "turn-classified:0",
+        kind: "mode",
+        text: "JEV · build · complex · design_yes · keep · new · planning",
+      },
+    ]);
+    expect(formatTurnClassifiedNotice(event)).toBe("JEV · build · complex · design_yes · keep · new · planning");
   });
 
   it("renders design-gate approved as a mode notice", () => {

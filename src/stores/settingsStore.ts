@@ -38,6 +38,7 @@ const SETTING_KEYS: (keyof AppSettings)[] = [
   "permissionMode",
   "confirmDestructive",
   "yoloMode",
+  "allowEnvFiles",
   "permissionWhitelist",
   "terminalShell",
   "autoSave",
@@ -92,6 +93,7 @@ const defaults: AppSettings = {
   permissionMode: "workspace-write",
   confirmDestructive: true,
   yoloMode: false,
+  allowEnvFiles: false,
   permissionWhitelist: [],
   terminalShell: defaultShellName(),
   autoSave: false,
@@ -180,6 +182,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         : sessionModeFromSettings(automaticTools);
       next.automaticTools = next.permissionMode !== "read-only";
       next.yoloMode = typeof next.yoloMode === "boolean" ? next.yoloMode : get().yoloMode;
+      next.allowEnvFiles = typeof next.allowEnvFiles === "boolean" ? next.allowEnvFiles : get().allowEnvFiles;
       next.permissionWhitelist = sanitizePermissionWhitelist(next.permissionWhitelist ?? get().permissionWhitelist);
       next.modelPolicy = sanitizeModelPolicy(next.modelPolicy ?? get().modelPolicy);
       next.disabledCapabilityIds = Array.isArray(next.disabledCapabilityIds)
@@ -249,6 +252,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
     if (key === "yoloMode") {
       set({ yoloMode: Boolean(value) });
+      persistSoon();
+      return;
+    }
+    if (key === "allowEnvFiles") {
+      set({ allowEnvFiles: Boolean(value) });
       persistSoon();
       return;
     }

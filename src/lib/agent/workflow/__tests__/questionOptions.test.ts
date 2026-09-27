@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  expandMatrixSelection,
+  formatMatrixSelection,
   normalizeAskUserQuestionInput,
+  parseMatrixQuestion,
   parseQuestionOptions,
   shouldApproveDesignFromQuestion,
 } from "../questionOptions";
@@ -118,5 +121,75 @@ describe("shouldApproveDesignFromQuestion", () => {
     ]);
     expect(shouldApproveDesignFromQuestion("design", stacks, "yes", "design_yes")).toBe(false);
     expect(shouldApproveDesignFromQuestion("design", stacks, "Next.js + TypeScript", "none")).toBe(false);
+  });
+
+  it("parses a numbered one-option-per-row prompt and expands the code", () => {
+    const prompt = `What design choices do you want for the drink images and user account feature? Choose one option per row.
+
+1. Drink images:
+- A: Add placeholder product images to the repo
+- B: Use placeholder/image CDN URLs (picsum/placehold.co)
+- C: Let the admin upload images (file upload route)
+
+2. User account auth:
+- A: Email+password register/login with JWT sessions
+- B: OAuth (Google/GitHub)
+- C: Magic link / passwordless
+
+3. User profile page:
+- A: Order history + saved addresses
+- B: Saved favorites + address book
+- C: Both
+
+4. Image quality default:
+- A: WebP
+- B: PNG
+- C: Either — keep original format
+
+5. Image serving:
+- A: Express static /public/images
+- B: CDN / external URL
+- C: Base64 embedded
+
+6. Persist cart per user:
+- A: Yes — migrate local cart to backend cart table
+- B: No — keep local cart
+
+Tell me your choices (1-6) or paste your own.`;
+    const matrix = parseMatrixQuestion(prompt);
+    expect(matrix?.rows).toHaveLength(6);
+    expect(matrix?.intro).toMatch(/Choose one option per row/);
+    expect(matrix?.rows[0]).toMatchObject({
+      n: 1,
+      title: "Drink images",
+    });
+    expect(matrix?.rows[0]?.choices.map((choice) => choice.id)).toEqual(["A", "B", "C"]);
+    expect(matrix?.rows[5]?.choices).toHaveLength(2);
+    const picks = { 1: "C", 2: "A", 3: "C", 4: "A", 5: "B", 6: "A" };
+    expect(formatMatrixSelection(matrix!.rows, picks)).toBe("1C 2A 3C 4A 5B 6A");
+    expect(expandMatrixSelection(prompt, "1C 2A 3C 4A 5B 6A")).toEqual([
+      "Drink images: Let the admin upload images (file upload route)",
+      "User account auth: Email+password register/login with JWT sessions",
+      "User profile page: Both",
+      "Image quality default: WebP",
+      "Image serving: CDN / external URL",
+      "Persist cart per user: Yes — migrate local cart to backend cart table",
+    ]);
+  });
+
+  it("does not split a normal question or a numbered list without letters", () => {
+    expect(parseMatrixQuestion("Which UI do you want?")).toBeNull();
+    expect(parseMatrixQuestion("Should we keep the list [1,2,3] in the timer UI?")).toBeNull();
+    expect(parseMatrixQuestion("1. First idea\n2. Second idea")).toBeNull();
+    expect(expandMatrixSelection("Which UI?", "1C 2A")).toEqual([]);
+  });
+
+  it("approves Yes, approve on a design question even when JEV says none", () => {
+    const approve = parseQuestionOptions([
+      { id: "yes", label: "Yes, approve" },
+      { id: "tweak", label: "Picsum size/format tweak" },
+    ]);
+    expect(shouldApproveDesignFromQuestion("design", approve, "Yes, approve", "none")).toBe(true);
+    expect(shouldApproveDesignFromQuestion("design", approve, "Picsum size/format tweak", "none")).toBe(false);
   });
 });

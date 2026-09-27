@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildKnowledgeReflectUserPrompt, clipText, formatKnowledgeCatalog, KNOWLEDGE_REFLECT_SYSTEM } from "../prompt";
+import {
+  buildKnowledgeReflectUserPrompt,
+  clipText,
+  formatKnowledgeCatalog,
+  KNOWLEDGE_REFLECT_SYSTEM,
+  SPEC_AUTHOR_SYSTEM,
+} from "../prompt";
 import type { KnowledgeReflectInput } from "../types";
 
 const input: KnowledgeReflectInput = {
@@ -38,6 +44,21 @@ describe("knowledge reflect prompt", () => {
 
   it("asks for a spec after product files unless the catalog already covers it", () => {
     expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("MUST propose a spec create");
+    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("update that spec instead of creating another");
     expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Prefer empty arrays only when nothing durable was learned and no product files were implemented.");
+    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Intention");
+    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Architecture");
+    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Structure");
+    expect(SPEC_AUTHOR_SYSTEM).toContain("durable project specification");
+    expect(SPEC_AUTHOR_SYSTEM).toContain("## Décisions");
+  });
+
+  it("includes excerpts of the changed files", () => {
+    const prompt = buildKnowledgeReflectUserPrompt(input, [], [
+      { path: "frontend/src/App.tsx", content: "export function App() { return null }" },
+    ]);
+    expect(prompt).toContain("### frontend/src/App.tsx");
+    expect(prompt).toContain("export function App() { return null }");
+    expect(buildKnowledgeReflectUserPrompt(input, [])).toContain("File excerpts: none");
   });
 });

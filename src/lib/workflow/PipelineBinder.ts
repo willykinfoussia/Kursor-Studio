@@ -1,12 +1,14 @@
 import type { AgentEvent } from "../agent/types";
 import type { ContextSliceSummary, ContextSourceId } from "../agent/context/types";
 import { clipPromptText, PROMPT_SOURCE_ORDER } from "../agent/context/assemble";
+import { isBuildPlanPrompt } from "../agent/plans/isBuildPlanPrompt";
 import { BUILTIN_SKILLS } from "../agent/skills/parseSkill";
 import { skillRegistry } from "../agent/skills/SkillRegistry";
 import { wrapUsingSuperpowers } from "../agent/workflow/prompts";
 import { LAYOUT_SKIP_EVENT_TYPES, type AgentRunEvent } from "./events";
 import { parseRuntimeToolName } from "../mcp/ids";
 import { applyPhasePrompts, extractPhasePrompts } from "./phasePrompts";
+import { applyPhaseTurns } from "./phaseTurns";
 import { nodeTypeForTool, toolFileLine, toolFilePath } from "./toolKind";
 import {
   FILET_TREE_IDS,
@@ -152,6 +154,7 @@ export function bindPipeline(events: readonly AgentRunEvent[], activeRun?: Agent
   }
 
   applyPhasePrompts(state.nodes.values(), extractPhasePrompts(events));
+  applyPhaseTurns(state.nodes, events);
   placePromptIngredients(state);
 
   return {
@@ -380,7 +383,9 @@ function fold(state: BinderState, event: AgentRunEvent) {
       }
       break;
     case "started":
-      mark(state, PIPELINE_IDS.user, "completed", event, { messageId: payload.userMessage.id, content: clipPromptText(payload.userMessage.content) });
+      if (!isBuildPlanPrompt(payload.userMessage.content)) {
+        mark(state, PIPELINE_IDS.user, "completed", event, { messageId: payload.userMessage.id, content: clipPromptText(payload.userMessage.content) });
+      }
       completeIfActive(state, PIPELINE_IDS.hook, event);
       mark(state, PIPELINE_IDS.router, "completed", event, { model: payload.model });
       mark(state, PIPELINE_IDS.model, "running", event, { model: payload.model });

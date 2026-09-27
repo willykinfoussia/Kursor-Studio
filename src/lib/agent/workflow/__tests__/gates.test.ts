@@ -17,6 +17,7 @@ import {
   RELOAD_BRAINSTORMING_REASON,
   TODO_IN_PROGRESS_REASON,
   WAIT_FOR_BUILD_REASON,
+  WAIT_FOR_DESIGN_PLAN_REASON,
   WAIT_FOR_AGENT_BRANCH_REASON,
 } from "../gates";
 
@@ -180,6 +181,42 @@ describe("HARD-GATE", () => {
       session({ skillCheckThisTurn: true, goalKind: "explain" }),
     );
     expect(gate.decision).toBe("deny");
+  });
+
+  it("approves a pending build on oui even when JEV says none", () => {
+    const next = session({
+      skillCheckThisTurn: true,
+      goalKind: "build",
+      invokedSkillIds: ["brainstorming"],
+    });
+    const result = next.beginUserTurn("oui", { verdict: turnVerdict({ reply: "none" }) });
+    expect(result.designApproved).toBe(true);
+    expect(next.turnReply).toBe("design_yes");
+    const create = evaluateWorkflowGate("create_plan", { name: "x", todos: ["a"] }, true, next);
+    if (create.decision === "deny") expect(create.reason).not.toBe(WAIT_FOR_DESIGN_PLAN_REASON);
+  });
+
+  it("does not approve ok when JEV only says affirmative", () => {
+    const next = session({
+      skillCheckThisTurn: true,
+      goalKind: "build",
+      invokedSkillIds: ["brainstorming"],
+    });
+    expect(next.beginUserTurn("ok", { verdict: turnVerdict({ reply: "affirmative" }) }).designApproved).toBe(false);
+    expect(next.designApproved).toBeNull();
+  });
+
+  it("keeps a hedged no as a design refusal", () => {
+    const next = session({
+      skillCheckThisTurn: true,
+      goalKind: "build",
+      invokedSkillIds: ["brainstorming"],
+      designApproved: { scope: "x", at: 1 },
+    });
+    next.beginUserTurn("oui mais change la stack", { verdict: turnVerdict({ reply: "design_no" }) });
+    expect(next.designApproved).toBeNull();
+    expect(next.goalKind).toBe("build");
+    expect(next.turnReply).toBe("design_no");
   });
 
   it("blocks create_plan during brainstorming without designApproved", () => {

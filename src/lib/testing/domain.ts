@@ -153,6 +153,7 @@ export interface CommandLog {
   stderr: string;
   timestamp: number;
   commitSha?: string | null;
+  level?: TestLevel;
 }
 
 export interface TestRun {

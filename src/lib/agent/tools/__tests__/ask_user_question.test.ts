@@ -326,4 +326,77 @@ describe("ask_user_question", () => {
     expect(result.error?.code).toBe("invalid_input");
     expect(result.error?.message).toMatch(/non-empty options/i);
   });
+
+  it("records expanded matrix notes and allows the choice when the classifier says none", async () => {
+    const session = new WorkflowSessionState();
+    session.goalKind = "build";
+    session.markSkillCheck("brainstorming");
+    const prompt = `What design choices do you want? Choose one option per row.
+
+1. Drink images:
+- A: Add placeholder product images to the repo
+- B: Use placeholder/image CDN URLs
+- C: Let the admin upload images (file upload route)
+
+2. User account auth:
+- A: Email+password register/login with JWT sessions
+- B: OAuth (Google/GitHub)
+- C: Magic link / passwordless
+
+3. User profile page:
+- A: Order history + saved addresses
+- B: Saved favorites + address book
+- C: Both
+
+4. Image quality default:
+- A: WebP
+- B: PNG
+- C: Either — keep original format
+
+5. Image serving:
+- A: Express static /public/images
+- B: CDN / external URL
+- C: Base64 embedded
+
+6. Persist cart per user:
+- A: Yes — migrate local cart to backend cart table
+- B: No — keep local cart`;
+    const harness = mockHarness(session, {
+      selected: "1C 2A 3C 4A 5B 6A",
+      allow: false,
+      reply: "none",
+    });
+    const tool = createAskUserQuestionTool();
+    const result = await tool.execute(
+      {
+        prompt,
+        options: ["1A 2A 3A 4B 5A 6A", "1C 2A 3C 4A 5B 6A", "Custom choices (paste yours)"],
+      },
+      idleToolContext("C:/Projects/TodoApp", { harness }),
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ selected: "1C 2A 3C 4A 5B 6A", allow: true });
+    expect(session.designApproved).toBeNull();
+    expect(session.designNotes).toEqual([
+      "Drink images: Let the admin upload images (file upload route)",
+      "User account auth: Email+password register/login with JWT sessions",
+      "User profile page: Both",
+      "Image quality default: WebP",
+      "Image serving: CDN / external URL",
+      "Persist cart per user: Yes — migrate local cart to backend cart table",
+    ]);
+  });
+
+  it("does not allow a design rejection", async () => {
+    const session = new WorkflowSessionState();
+    const harness = mockHarness(session, { selected: "non", allow: true, reply: "design_no" });
+    const tool = createAskUserQuestionTool();
+    const result = await tool.execute(
+      { prompt: "Ce design vous convient ?", kind: "design", options: ["oui", "non"] },
+      idleToolContext("C:/Projects/TodoApp", { harness }),
+    );
+    expect(result.data).toMatchObject({ selected: "non", allow: false });
+    expect(session.designApproved).toBeNull();
+    expect(session.designNotes).toEqual([]);
+  });
 });

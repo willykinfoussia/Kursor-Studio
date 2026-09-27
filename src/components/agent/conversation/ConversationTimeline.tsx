@@ -9,6 +9,7 @@ import {
 import type { AgentStatus, ToolCall } from "../../../types/agent";
 import { ConversationItem } from "./ConversationItem";
 import { EmptyState } from "./EmptyState";
+import { QuestionBlock } from "../blocks/QuestionBlock";
 import { ToolGroup } from "../blocks/ToolGroup";
 import { ThoughtSummary } from "./ThoughtSummary";
 
@@ -93,6 +94,19 @@ export function ConversationTimeline({
   return (
     <div className="conversation-timeline">
       {views.map((view) => {
+        if (view.kind === "question-chain") {
+          const match = view.items.find((item) => itemMatchesHighlight(item.id, highlightedItemId));
+          const anchor = match ?? view.items[view.items.length - 1];
+          return (
+            <div
+              key={view.id}
+              data-timeline-id={anchor?.id}
+              className={match ? "timeline-highlight" : undefined}
+            >
+              <QuestionBlock questions={view.items} onAnswer={onAnswerQuestion} />
+            </div>
+          );
+        }
         if (view.kind === "tool-group") {
           const running = view.items.some((item) => toolMap.get(item.toolCallId)?.status === "running");
           const expanded = userExpanded[view.id] ?? running;

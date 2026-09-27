@@ -129,11 +129,11 @@ export interface ModelUsageSnapshot extends ModelUsage {
 export type AgentEvent =
   | { type: "started"; requestId: string; messageId: string; model: string; userMessage: AgentMessage }
   | { type: "text-delta"; messageId: string; text: string }
-  | { type: "assistant-message"; messageId: string; text: string }
+  | { type: "assistant-message"; messageId: string; text: string; agentId?: string }
   | { type: "tool-started"; id: string; tool: string; input: unknown; taskId?: string; agentId?: string }
   | { type: "tool-completed"; id: string; tool: string; output: unknown; taskId?: string; agentId?: string }
   | ({ type: "permission-required" } & import("./permissions/types").ApprovalRequest)
-  | { type: "step-started"; stepId: string; index: number; kind: AgentStepKind }
+  | { type: "step-started"; stepId: string; index: number; kind: AgentStepKind; agentId?: string }
   | { type: "step-finished"; stepId: string; index: number; kind: AgentStepKind }
   | {
       type: "verification-started";

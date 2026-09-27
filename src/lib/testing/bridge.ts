@@ -82,6 +82,21 @@ function checkForLevel(run: TestRun, strategy: TestStrategyDecision, level: Test
   }
   const type = level === "integration" ? "INTEGRATION" : level === "e2e" ? "E2E" : "UNIT";
   const cases = run.results.map((result) => result.case).filter((item) => item.type === type);
+  const command = commandForLevel(run, level, decision.runner);
+  if (run.status !== "ERROR" && run.status !== "CANCELLED" && cases.length > 0 && cases.every((item) => item.status === "SKIPPED")) {
+    return {
+      kind: "test",
+      name: level,
+      command,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      diagnosis: `${level} skipped: no test files`,
+      ok: true,
+      skipped: true,
+      durationMs: run.durationMs,
+    };
+  }
   const failed = cases.filter((item) => item.status === "FAILED" || item.status === "ERROR");
   if (run.status === "ERROR" || run.status === "CANCELLED" || failed.length > 0 || cases.length === 0) {
     const diagnosis = failed.length > 0
@@ -90,7 +105,7 @@ function checkForLevel(run: TestRun, strategy: TestStrategyDecision, level: Test
     return {
       kind: "test",
       name: level,
-      command: run.commandLog.find((entry) => entry.command.toLowerCase().includes(decision.runner ?? ""))?.command,
+      command,
       exitCode: 1,
       stdout: diagnosis,
       stderr: run.error ?? failed[0]?.error ?? "",
@@ -102,6 +117,7 @@ function checkForLevel(run: TestRun, strategy: TestStrategyDecision, level: Test
   return {
     kind: "test",
     name: level,
+    command,
     exitCode: 0,
     stdout: `${cases.length} ${level} tests passed`,
     stderr: "",
@@ -109,4 +125,9 @@ function checkForLevel(run: TestRun, strategy: TestStrategyDecision, level: Test
     ok: true,
     durationMs: run.durationMs,
   };
+}
+
+function commandForLevel(run: TestRun, level: TestLevel, runner: string | null): string | undefined {
+  return run.commandLog.find((entry) => entry.level === level)?.command
+    ?? run.commandLog.find((entry) => entry.command.toLowerCase().includes(runner ?? ""))?.command;
 }

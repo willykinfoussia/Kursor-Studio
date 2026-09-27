@@ -106,7 +106,7 @@ export class VitestRunner implements TestRunner {
       ? " --exclude **/*.integration.test.ts --exclude **/*.e2e.test.ts"
       : "";
     const include = level === "integration"
-      ? " **/*.integration.test.ts tests/integration"
+      ? " **/*.integration.test.ts tests/integration --passWithNoTests"
       : "";
     const coverage = ctx.discovery.markers.includes("coverage") || scriptHasCoverage(ctx.discovery)
       ? " --coverage.enabled --coverage.reporter=json-summary"
@@ -120,9 +120,8 @@ export class VitestRunner implements TestRunner {
 
   parseResults(raw: RawRun, level: TestLevel): TestCase[] {
     const json = extractJson(raw.stdout);
-    if (!json) return [summaryCase(raw, level, "vitest")];
-    const files = Array.isArray(json.testResults) ? json.testResults : [];
     const cases: TestCase[] = [];
+    const files = json && Array.isArray(json.testResults) ? json.testResults : [];
     for (const file of files) {
       if (!file || typeof file !== "object") continue;
       const row = file as Record<string, unknown>;
@@ -133,7 +132,11 @@ export class VitestRunner implements TestRunner {
         cases.push(caseFromAssertion(assertion as Record<string, unknown>, fileName, level, "vitest"));
       }
     }
-    return cases.length > 0 ? cases : [summaryCase(raw, level, "vitest")];
+    if (cases.length > 0) return cases;
+    if (level === "integration" && (noTestFilesFound(raw) || cases.length === 0)) {
+      return [skippedSuite(raw, level, "vitest")];
+    }
+    return [summaryCase(raw, level, "vitest")];
   }
 
   async cleanup() {
@@ -322,6 +325,22 @@ function summaryCase(raw: RawRun, level: TestLevel, framework: string): TestCase
     error: failed ? (raw.stderr || raw.stdout).slice(0, 2_000) : undefined,
     stack: failed ? raw.stderr.slice(0, 4_000) : undefined,
   };
+}
+
+function skippedSuite(raw: RawRun, level: TestLevel, framework: string): TestCase {
+  return {
+    id: `${framework}:${level}:suite`,
+    name: `${framework} ${level} suite`,
+    description: raw.command,
+    type: caseTypeFor(level),
+    framework,
+    runner: framework,
+    status: "SKIPPED",
+  };
+}
+
+function noTestFilesFound(raw: RawRun): boolean {
+  return /No test files found/i.test(`${raw.stderr}\n${raw.stdout}`);
 }
 
 function caseFromAssertion(row: Record<string, unknown>, file: string | undefined, level: TestLevel, framework: string): TestCase {

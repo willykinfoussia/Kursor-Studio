@@ -104,10 +104,13 @@ function ConversationItemView({
     case "user-question":
       return (
         <QuestionBlock
-          prompt={item.prompt}
-          options={item.options}
-          selected={item.selected}
-          onAnswer={item.selected ? undefined : onAnswerQuestion ? (selected) => onAnswerQuestion(item.questionId, selected) : undefined}
+          questions={[{
+            questionId: item.questionId,
+            prompt: item.prompt,
+            options: item.options,
+            selected: item.selected,
+          }]}
+          onAnswer={onAnswerQuestion}
         />
       );
     case "completion":

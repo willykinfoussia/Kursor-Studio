@@ -1,3 +1,4 @@
+import type { FileExcerpt } from "./excerpts";
 import type { KnowledgeReflectInput } from "./types";
 
 export interface KnowledgeCatalogItem {
@@ -24,13 +25,37 @@ Return JSON only:
 }
 
 Rules:
-- Skill = reusable procedure (how to do the work). Spec = durable product/user knowledge (what the system is, constraints, preferences).
+- Skill = reusable procedure (how to do the work). Spec = durable product knowledge: the architecture, structure, and idea behind the code.
 - Do not propose anything already covered by the catalog.
-- If the run mutated files to implement a product or feature, you MUST propose a spec create unless an equivalent spec already exists in the catalog.
+- If the run mutated files to implement a product or feature, you MUST propose a spec create unless an equivalent spec already exists in the catalog. If it exists, update that spec instead of creating another.
+- Spec content is markdown in the language of the goal. Required sections: Intention (why this exists), Architecture (how the pieces fit), Structure (each module's role), Décisions (lasting choices and constraints), Fichiers (each file with one sentence on its role).
+- A heading followed by a file list is not a spec. Describe the system, not the task log.
 - Ignore ephemeral task state, one-off bug traces, and disposable code snippets.
 - delete / reorganize only with strong evidence a spec is obsolete or in the wrong group.
 - Prefer empty arrays only when nothing durable was learned and no product files were implemented.
-- Never invent secrets. Keep drafts short and actionable.`;
+- Never invent secrets. Keep skill drafts short. Spec content must be specific to the code excerpts.`;
+
+export const SPEC_AUTHOR_SYSTEM = `You write one durable project specification from a finished coding run.
+
+Return JSON only:
+{ "summary": "one line", "kind": "architecture", "fileName": "short-name.md", "title": "", "content": "markdown" }
+
+The content is a project spec in the language of the goal. It describes the architecture, structure, and idea behind the code, not a task log.
+Required sections, translated into the goal's language when needed:
+## Intention
+## Architecture
+## Structure
+## Décisions
+## Fichiers
+
+Intention: why this code exists and the philosophy behind it.
+Architecture: how the pieces fit, the flows, the responsibilities, and the boundaries.
+Structure: each module's role, not only its path.
+Décisions: design choices and lasting constraints.
+Fichiers: each changed file with one sentence on its role.
+
+kind is a precise project spec kind (ui, api, auth, ...) or architecture.
+Do not return a heading plus a file list. Never invent secrets.`;
 
 export function clipText(value: string, max: number) {
   if (value.length <= max) return value;
@@ -60,6 +85,30 @@ export function formatKnowledgeConversation(input: KnowledgeReflectInput) {
   ].join("\n");
 }
 
-export function buildKnowledgeReflectUserPrompt(input: KnowledgeReflectInput, catalog: readonly KnowledgeCatalogItem[]) {
-  return `${formatKnowledgeCatalog(catalog) || "(empty catalog)"}\n\n${formatKnowledgeConversation(input)}`;
+export function formatFileExcerpts(excerpts: readonly FileExcerpt[]) {
+  if (excerpts.length === 0) return "File excerpts: none";
+  return [
+    "File excerpts:",
+    ...excerpts.map((excerpt) => `### ${excerpt.path}\n${excerpt.content}`),
+  ].join("\n\n");
+}
+
+export function buildKnowledgeReflectUserPrompt(
+  input: KnowledgeReflectInput,
+  catalog: readonly KnowledgeCatalogItem[],
+  excerpts: readonly FileExcerpt[] = [],
+) {
+  return [
+    formatKnowledgeCatalog(catalog) || "(empty catalog)",
+    formatKnowledgeConversation(input),
+    formatFileExcerpts(excerpts),
+  ].join("\n\n");
+}
+
+export function buildSpecAuthorUserPrompt(
+  input: KnowledgeReflectInput,
+  catalog: readonly KnowledgeCatalogItem[],
+  excerpts: readonly FileExcerpt[] = [],
+) {
+  return `${buildKnowledgeReflectUserPrompt(input, catalog, excerpts)}\n\nWrite the project specification for this run.`;
 }

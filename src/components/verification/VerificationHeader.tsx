@@ -1,10 +1,13 @@
 import { FlaskConical, Plus, Square } from "lucide-react";
+import { verificationPhaseLabel, type VerificationPhase } from "../../lib/agent/verification/format";
 
 export function VerificationHeader({
   running,
   stopping,
+  phase,
   progress,
   current,
+  elapsed,
   onRun,
   onStop,
   onConfigure,
@@ -13,8 +16,10 @@ export function VerificationHeader({
 }: {
   running: boolean;
   stopping: boolean;
+  phase: VerificationPhase;
   progress?: string | null;
   current?: string | null;
+  elapsed?: string | null;
   onRun: () => void;
   onStop: () => void;
   onConfigure: () => void;
@@ -47,12 +52,18 @@ export function VerificationHeader({
           <Plus size={14} />
         </button>
       </div>
-      {running && (
+      {(running || phase === "approval") && (
         <p className="verify-progress" role="status">
           <span className="verify-dot" aria-hidden="true" />
-          Verifying… {progress}{current ? ` · Current: ${current}` : ""}
+          {activityLabel(phase, stopping)}{progress ? ` ${progress}` : ""}{current ? ` · ${current}` : ""}{elapsed ? ` · ${elapsed}` : ""}
         </p>
       )}
     </header>
   );
+}
+
+function activityLabel(phase: VerificationPhase, stopping: boolean) {
+  if (stopping) return "Stopping…";
+  if (phase === "launching" || phase === "approval") return verificationPhaseLabel(phase);
+  return "Verifying…";
 }

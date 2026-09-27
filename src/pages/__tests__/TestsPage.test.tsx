@@ -26,6 +26,8 @@ vi.mock("../../lib/agent/AgentRuntime", () => ({
 import { TestsPage } from "../TestsPage";
 import { useProjectStore } from "../../stores/projectStore";
 import { useVerificationStore } from "../../stores/verificationStore";
+import { useUiStore } from "../../stores/uiStore";
+import { useAgentStore } from "../../stores/agentStore";
 import { CoveragePanel } from "../../components/verification/CoveragePanel";
 import { VerifiedFunctionality } from "../../components/verification/VerifiedFunctionality";
 import { VerificationHealth } from "../../components/verification/VerificationHealth";
@@ -68,6 +70,9 @@ beforeEach(() => {
     runningId: null,
     requestId: null,
     trigger: null,
+    phase: "idle",
+    startedAt: null,
+    activeCommand: null,
     running: false,
     stopping: false,
     loading: false,
@@ -144,6 +149,55 @@ describe("TestsPage", () => {
     expect(screen.getByText(/Verifying/)).toBeTruthy();
     expect(screen.getByText("Running…")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
+  });
+
+  it("shows the launch and keeps the log open while a check runs", () => {
+    useVerificationStore.setState({
+      running: true,
+      phase: "launching",
+      startedAt: Date.now() - 1200,
+      activeCommand: "pnpm test",
+      runningId: "standard:test",
+      selectedId: "standard:test",
+      detailsOpen: true,
+      health: "running",
+      suite: suiteFrom(inspection, null, { runningId: "standard:test", waiting: true }),
+    });
+    render(<TestsPage />);
+    expect(screen.getAllByText(/Launching/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Command is running. Output appears when it finishes.")).toBeTruthy();
+    expect(screen.getAllByText("pnpm test").length).toBeGreaterThan(0);
+  });
+
+  it("asks for approval on the tests page when the agent panel is closed", () => {
+    useUiStore.setState({ agentVisible: false });
+    useAgentStore.setState({
+      pendingApprovals: [{
+        kind: "permission",
+        id: "p1",
+        permission: {
+          id: "p1",
+          tool: "run_command",
+          input: { command: "pnpm test" },
+          reason: "run tests",
+          riskLevel: "medium",
+          capability: "terminal.execute",
+          scope: { kind: "project" },
+          mode: "workspace-write",
+        },
+      }],
+    });
+    useVerificationStore.setState({
+      running: true,
+      phase: "approval",
+      health: "running",
+      activeCommand: "pnpm test",
+      runningId: "standard:test",
+      suite: suiteFrom(inspection, null, { runningId: "standard:test", waiting: true }),
+    });
+    render(<TestsPage />);
+    expect(screen.getByText(/Waiting for approval/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Allow once" })).toBeTruthy();
   });
 });
 

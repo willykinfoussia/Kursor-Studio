@@ -1,5 +1,6 @@
 import { isMutatingToolName, toolOutputOk } from "../AgentStep";
 import { inputCommand, isDeniedCommand } from "../permissions/commands";
+import { useSettingsStore } from "../../../stores/settingsStore";
 import { inputFilePath, isProtectedPath, pathAccessForTool } from "../tools/protectedPaths";
 import { toolChangedPath } from "../tools/result";
 import type { HookHandler } from "./types";
@@ -19,7 +20,7 @@ export function builtinSafetyHooks(): HookHandler[] {
       run(context) {
         const path = context.path || inputFilePath(context.input) || "";
         const access = pathAccessForTool(context.tool);
-        if (path && isProtectedPath(path, access)) {
+        if (path && isProtectedPath(path, access, { allowEnvFiles: useSettingsStore.getState().allowEnvFiles })) {
           return { result: "block", message: `Path "${path}" is protected.` };
         }
         return { result: "continue" };

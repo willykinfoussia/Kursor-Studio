@@ -1,4 +1,5 @@
 import type { TurnReply } from "../workflows/turnClassifier";
+import { explicitDesignYes } from "./approvalLanguage";
 
 export interface QuestionChoice {
   id: string;
@@ -118,6 +119,111 @@ export function questionChoiceLabels(choices: readonly QuestionChoice[]): string
   return choices.map((choice) => choice.label);
 }
 
+export interface MatrixRow {
+  n: number;
+  title: string;
+  choices: QuestionChoice[];
+}
+
+export interface MatrixQuestion {
+  intro: string;
+  rows: MatrixRow[];
+}
+
+const MATRIX_ROW_HEAD = /^\s*(\d+)\.\s+(.+)$/;
+const MATRIX_LETTER = /^\s*(?:[-*+]\s*)?([A-Z])\s*[:.)]\s+(.+)$/;
+const MATRIX_TOKEN = /^(\d+)([A-Z])$/i;
+
+/**
+ * Numbered rows with lettered choices (`1. Title:` then `- A: …`).
+ * Returns null unless there are at least two rows and two letters on each row.
+ */
+export function parseMatrixQuestion(prompt: string): MatrixQuestion | null {
+  const intro: string[] = [];
+  const rows: MatrixRow[] = [];
+  let current: MatrixRow | null = null;
+  let seenRow = false;
+
+  const close = () => {
+    if (!current) return;
+    rows.push(current);
+    current = null;
+  };
+
+  for (const line of prompt.split(/\r?\n/)) {
+    const head = line.match(MATRIX_ROW_HEAD);
+    if (head) {
+      close();
+      seenRow = true;
+      const title = head[2].replace(/:\s*$/, "").trim();
+      if (!title) return null;
+      current = { n: Number(head[1]), title, choices: [] };
+      continue;
+    }
+    const letter = line.match(MATRIX_LETTER);
+    if (seenRow && current && letter) {
+      const id = letter[1].toUpperCase();
+      const label = letter[2].trim();
+      if (!label || current.choices.some((choice) => choice.id === id)) return null;
+      current.choices.push({ id, label });
+      continue;
+    }
+    if (!seenRow) {
+      const trimmed = line.trim();
+      if (trimmed) intro.push(trimmed);
+    }
+  }
+  close();
+  if (rows.length < 2 || rows.some((row) => row.choices.length < 2)) return null;
+  return { intro: intro.join("\n"), rows };
+}
+
+/** `1C 2A` from a letter picked on each row. Null while a row is still open. */
+export function formatMatrixSelection(
+  rows: readonly MatrixRow[],
+  picks: Readonly<Record<number, string>>,
+): string | null {
+  const parts: string[] = [];
+  for (const row of rows) {
+    const letter = picks[row.n]?.trim().toUpperCase();
+    if (!letter || !row.choices.some((choice) => choice.id === letter)) return null;
+    parts.push(`${row.n}${letter}`);
+  }
+  return parts.join(" ");
+}
+
+/** Row number to letter, when `selected` is a complete matrix code. */
+export function matrixRowPicks(
+  rows: readonly MatrixRow[],
+  selected: string,
+): Record<number, string> | null {
+  const tokens = selected.trim().split(/\s+/);
+  if (tokens.length !== rows.length) return null;
+  const picks: Record<number, string> = {};
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const token = tokens[index]?.match(MATRIX_TOKEN);
+    if (!row || !token || Number(token[1]) !== row.n) return null;
+    const letter = token[2].toUpperCase();
+    if (!row.choices.some((choice) => choice.id === letter)) return null;
+    picks[row.n] = letter;
+  }
+  return picks;
+}
+
+/** One readable design note per row, or [] when `selected` is not a matrix code. */
+export function expandMatrixSelection(prompt: string, selected: string): string[] {
+  const matrix = parseMatrixQuestion(prompt);
+  if (!matrix) return [];
+  const picks = matrixRowPicks(matrix.rows, selected);
+  if (!picks) return [];
+  return matrix.rows.map((row) => {
+    const letter = picks[row.n];
+    const choice = row.choices.find((item) => item.id === letter);
+    return `${row.title}: ${choice?.label ?? letter}`;
+  });
+}
+
 export function matchedQuestionChoice(
   choices: readonly QuestionChoice[],
   selected: string,
@@ -133,8 +239,11 @@ export function shouldApproveDesignFromQuestion(
   selected: string,
   reply: TurnReply,
 ): boolean {
-  if (kind !== "design" || reply !== "design_yes") return false;
-  return Boolean(matchedQuestionChoice(choices, selected));
+  if (kind !== "design" || reply === "design_no") return false;
+  const choice = matchedQuestionChoice(choices, selected);
+  if (!choice) return false;
+  if (reply === "design_yes") return true;
+  return explicitDesignYes(choice.label) || explicitDesignYes(choice.id);
 }
 
 export function isUserQuestionStep(stepId: string | undefined): boolean {

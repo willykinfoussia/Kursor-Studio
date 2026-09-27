@@ -7,6 +7,11 @@ import { activeToolLabel } from "./toolGrouping";
 
 export const DESIGN_APPROVED_NOTICE = "Design approved. Next: write the implementation plan.";
 
+export function formatTurnClassifiedNotice(event: Extract<AgentEvent, { type: "turn-classified" }>): string {
+  const skip = event.skipProcess ? "skip" : "keep";
+  return `JEV · ${event.goalKind} · ${event.complexity} · ${event.reply} · ${skip} · ${event.continuation} · ${event.modelTask}`;
+}
+
 const VISIBLE_KNOWLEDGE_SKIP = new Set(["failed", "no-llm", "no-project"]);
 
 export function knowledgeSkipNotice(reason: string, error?: string): string | null {
@@ -317,6 +322,13 @@ export function applyAgentEvent(
         id: `hook-denied:${event.event}:${current.length}`,
         kind: "mode",
         text: event.message,
+      }];
+    case "turn-classified":
+      return [...current, {
+        type: "system",
+        id: `turn-classified:${current.length}`,
+        kind: "mode",
+        text: formatTurnClassifiedNotice(event),
       }];
     case "design-gate":
       return [...current, {

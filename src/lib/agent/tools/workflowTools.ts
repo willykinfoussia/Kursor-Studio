@@ -7,8 +7,9 @@ import {
   isSwitchableAgentMode,
   type SwitchableAgentMode,
 } from "../modes";
-import { isAffirmativeReply } from "../workflow/approvalLanguage";
+import { isDesignRejectionReply } from "../workflow/approvalLanguage";
 import {
+  expandMatrixSelection,
   matchedQuestionChoice,
   normalizeAskUserQuestionInput,
   parseQuestionOptions,
@@ -88,10 +89,16 @@ export function createAskUserQuestionTool(): AgentTool {
       }
       const answer = await harness.askUser({ id, prompt, options, kind });
       const reply = answer.reply ?? "none";
-      const allowed = answer.allow || isAffirmativeReply(reply);
+      const selected = answer.selected.trim();
+      const allowed = selected.length > 0 && !isDesignRejectionReply(reply);
       if (!harness.workflow.planApproved && kind !== "finish-branch") {
-        const choice = matchedQuestionChoice(options, answer.selected);
-        harness.workflow.recordDesignChoice(choice?.label ?? answer.selected, reply);
+        const matrixNotes = expandMatrixSelection(prompt, selected);
+        if (matrixNotes.length > 0 && !isDesignRejectionReply(reply)) {
+          for (const note of matrixNotes) harness.workflow.recordDesignChoice(note, "none");
+        } else if (matrixNotes.length === 0) {
+          const choice = matchedQuestionChoice(options, answer.selected);
+          harness.workflow.recordDesignChoice(choice?.label ?? answer.selected, reply);
+        }
       }
       if (
         shouldApproveDesignFromQuestion(kind, options, answer.selected, reply)

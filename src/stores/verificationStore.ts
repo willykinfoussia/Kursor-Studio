@@ -9,6 +9,7 @@ import {
   verificationGaps,
   type SuiteItem,
 } from "../lib/agent/verification";
+import type { VerificationPhase } from "../lib/agent/verification/format";
 import type {
   ProfileInspection,
   StandardCheckKind,
@@ -28,6 +29,9 @@ interface VerificationUiState {
   runningId: string | null;
   requestId: string | null;
   trigger: "agent" | "manual" | null;
+  phase: VerificationPhase;
+  startedAt: number | null;
+  activeCommand: string | null;
   running: boolean;
   stopping: boolean;
   loading: boolean;
@@ -48,6 +52,7 @@ interface VerificationUiState {
   select: (id: string | null) => void;
   setEditorOpen: (open: boolean) => void;
   setAddOpen: (open: boolean) => void;
+  noteApproval: (waiting: boolean) => void;
   applyEvent: (event: AgentEvent) => void;
 }
 
@@ -59,6 +64,9 @@ export const useVerificationStore = create<VerificationUiState>((set, get) => ({
   runningId: null,
   requestId: null,
   trigger: null,
+  phase: "idle",
+  startedAt: null,
+  activeCommand: null,
   running: false,
   stopping: false,
   loading: false,
@@ -109,29 +117,20 @@ export const useVerificationStore = create<VerificationUiState>((set, get) => ({
     }
   },
   runAll: async () => {
-    set({ error: null, stopping: false });
+    const first = get().suite.find((item) => item.status !== "disabled" && item.status !== "not-configured");
+    armRun(set, get, { runningId: null, command: first?.command ?? null, selectedId: first?.id ?? null });
     try {
       await agentRuntime.runVerification();
     } catch (error) {
-      set({
-        running: false,
-        stopping: false,
-        error: error instanceof Error ? error.message : "Unable to run verification.",
-        ...derived(get().inspection, get().lastReport, { running: false }),
-      });
+      failRun(set, get, error, "Unable to run verification.");
     }
   },
   runItem: async (item) => {
-    set({ error: null, stopping: false });
+    armRun(set, get, { runningId: item.id, command: item.command ?? null, selectedId: item.id });
     try {
       await agentRuntime.runVerification(filterFor(item));
     } catch (error) {
-      set({
-        running: false,
-        stopping: false,
-        error: error instanceof Error ? error.message : "Unable to run check.",
-        ...derived(get().inspection, get().lastReport, { running: false }),
-      });
+      failRun(set, get, error, "Unable to run check.");
     }
   },
   stop: () => {
@@ -155,24 +154,39 @@ export const useVerificationStore = create<VerificationUiState>((set, get) => ({
   select: (id) => set({ selectedId: id, detailsOpen: Boolean(id) }),
   setEditorOpen: (editorOpen) => set({ editorOpen }),
   setAddOpen: (addOpen) => set({ addOpen }),
+  noteApproval: (waiting) => {
+    const phase = get().phase;
+    if (waiting) {
+      if (get().running || phase === "launching" || phase === "running") set({ phase: "approval" });
+      return;
+    }
+    if (phase === "approval" && get().running) set({ phase: "running" });
+  },
   applyEvent: (event) => {
     if (event.type === "verification-started") {
       set({
         running: true,
         stopping: false,
         liveResults: [],
-        runningId: null,
+        runningId: get().runningId,
         requestId: event.requestId,
-        trigger: event.trigger ?? "agent",
+        trigger: event.trigger ?? get().trigger ?? "agent",
         error: null,
-        ...derived(get().inspection, get().lastReport, { running: true, waiting: true }),
+        phase: get().phase === "approval" ? "approval" : "launching",
+        startedAt: get().startedAt ?? Date.now(),
+        ...derived(get().inspection, get().lastReport, { running: true, runningId: get().runningId }),
       });
       return;
     }
     if (event.type === "verification-check-started") {
       const runningId = liveId(event);
+      const manual = get().trigger === "manual";
       set({
+        running: true,
         runningId,
+        phase: "running",
+        activeCommand: event.command ?? get().activeCommand,
+        ...(manual ? { selectedId: runningId, detailsOpen: true } : {}),
         ...derived(get().inspection, mergeLive(get().lastReport, get().liveResults), {
           running: true,
           runningId,
@@ -183,11 +197,13 @@ export const useVerificationStore = create<VerificationUiState>((set, get) => ({
     }
     if (event.type === "verification-check-completed") {
       const liveResults = [...get().liveResults.filter((item) => liveKey(item) !== liveKey(event.result)), event.result];
+      const report = mergeLive(get().lastReport, liveResults);
       set({
         liveResults,
         runningId: null,
-        lastReport: mergeLive(get().lastReport, liveResults),
-        ...derived(get().inspection, mergeLive(get().lastReport, liveResults), {
+        phase: "running",
+        lastReport: report,
+        ...derived(get().inspection, report, {
           running: true,
           liveResults,
         }),
@@ -213,6 +229,7 @@ export const useVerificationStore = create<VerificationUiState>((set, get) => ({
       set({
         running: false,
         stopping: false,
+        phase: event.cancelled ? "stopped" : "finished",
         liveResults: report.results,
         runningId: null,
         lastReport: report,
@@ -229,6 +246,44 @@ export const useVerificationStore = create<VerificationUiState>((set, get) => ({
     }
   },
 }));
+
+function armRun(
+  set: (partial: Partial<VerificationUiState>) => void,
+  get: () => VerificationUiState,
+  input: { runningId: string | null; command: string | null; selectedId: string | null },
+) {
+  const state = get();
+  set({
+    error: null,
+    stopping: false,
+    running: true,
+    runningId: input.runningId,
+    trigger: "manual",
+    phase: "launching",
+    startedAt: Date.now(),
+    activeCommand: input.command,
+    selectedId: input.selectedId,
+    detailsOpen: Boolean(input.selectedId),
+    requestId: null,
+    ...derived(state.inspection, state.lastReport, { running: true, runningId: input.runningId }),
+  });
+}
+
+function failRun(
+  set: (partial: Partial<VerificationUiState>) => void,
+  get: () => VerificationUiState,
+  error: unknown,
+  fallback: string,
+) {
+  const state = get();
+  set({
+    running: false,
+    stopping: false,
+    phase: "error",
+    error: error instanceof Error ? error.message : fallback,
+    ...derived(state.inspection, state.lastReport, { running: false }),
+  });
+}
 
 function derived(
   inspection: ProfileInspection | null,

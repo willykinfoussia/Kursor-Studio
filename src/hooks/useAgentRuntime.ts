@@ -5,7 +5,6 @@ import { toolOutputOk } from "../lib/agent/AgentStep";
 import { toolChangedPath } from "../lib/agent/tools/result";
 import { useAgentStore } from "../stores/agentStore";
 import { useReviewStore } from "../stores/reviewStore";
-import { useVerificationStore } from "../stores/verificationStore";
 import type { WorkflowStepStatus } from "../lib/agent/workflows/types";
 import { parseQuestionOptions } from "../lib/agent/workflow/questionOptions";
 import { applyPlanTodoProgress } from "../lib/agent/plans/applyPlanTodoProgress";
@@ -202,11 +201,9 @@ export function useAgentRuntime() {
       case "verification-started":
         store.setStatus("verifying");
         store.applyTimelineEvent(event);
-        useVerificationStore.getState().applyEvent(event);
         break;
       case "verification-check-started":
       case "verification-check-completed":
-        useVerificationStore.getState().applyEvent(event);
         break;
       case "verification-completed":
         store.setVerification({
@@ -219,7 +216,6 @@ export function useAgentRuntime() {
           trigger: event.trigger,
         });
         store.applyTimelineEvent(event);
-        useVerificationStore.getState().applyEvent(event);
         break;
       case "tool-started": {
         store.upsertTool({

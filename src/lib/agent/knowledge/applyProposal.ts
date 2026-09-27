@@ -8,6 +8,7 @@ import {
 import { createSpecGroup, ensureNestedDirectory, writeNewSpec } from "../../graph/createSpec";
 import type { GraphFileStore } from "../../graph/types";
 import { skillDocuments, SkillDocumentService } from "../skills/SkillDocument";
+import { ensureSpecFrontmatter } from "./specDocument";
 import type { KnowledgeProposal, SpecProposalAction, SkillProposalAction } from "./types";
 
 export interface ApplyProposalSelection {
@@ -45,6 +46,15 @@ async function applySkill(action: SkillProposalAction, skills: SkillDocumentServ
   else await skills.create(action.scope, draft);
 }
 
+function writtenSpec(action: SpecProposalAction, content: string): string {
+  const fileName = action.fileName || action.path?.split("/").pop() || action.targetPath?.split("/").pop();
+  return ensureSpecFrontmatter(content, {
+    scope: action.scope,
+    kind: action.kind,
+    fileName,
+  });
+}
+
 async function resolveCreatePath(action: SpecProposalAction) {
   const fileName = action.fileName || "untitled.md";
   if (action.scope === "account") {
@@ -67,7 +77,7 @@ async function applySpec(
       group: action.group,
       fileName: action.fileName || "untitled.md",
     });
-    if (action.content) await files.writeFile(path, action.content);
+    if (action.content) await files.writeFile(path, writtenSpec(action, action.content));
     await onSpecChanged?.(path, "create");
     return path;
   }
@@ -75,7 +85,7 @@ async function applySpec(
   if (action.action === "update") {
     const path = action.path;
     if (!path) throw new Error("Spec update requires a path.");
-    const body = action.content ?? await files.readFile(path);
+    const body = action.content ? writtenSpec(action, action.content) : await files.readFile(path);
     await files.writeFile(path, body);
     await onSpecChanged?.(path, "modify");
     return path;
@@ -93,7 +103,7 @@ async function applySpec(
   const to = action.targetPath || await resolveCreatePath({ ...action, action: "create" });
   if (!from) throw new Error("Spec reorganize requires a path.");
   if (action.group) await createSpecGroup(files, action.scope, sanitizeSpecGroupName(action.group));
-  const content = action.content ?? await files.readFile(from);
+  const content = action.content ? writtenSpec(action, action.content) : await files.readFile(from);
   const parent = to.split("/").slice(0, -1).join("/");
   await ensureNestedDirectory(files, parent);
   await files.writeFile(to, content);
