@@ -1,6 +1,6 @@
 import type { AgentMessage } from "../types";
 import { CODING_AGENT_RULES, toolGuidance } from "./identity";
-import type { ContextSlice, ContextSnapshot, ContextSourceId, ContextTraceEntry } from "./types";
+import type { ContextSlice, ContextSliceSummary, ContextSnapshot, ContextSourceId, ContextTraceEntry } from "./types";
 import { estimateTokens } from "./tokens";
 
 const LAYER_ORDER: ContextSourceId[] = [
@@ -14,6 +14,32 @@ const LAYER_ORDER: ContextSourceId[] = [
   "web",
   "tool",
 ];
+
+/** Sources in the order they are written into the prompt. Conversation is the message list. */
+export const PROMPT_SOURCE_ORDER: readonly ContextSourceId[] = [
+  ...LAYER_ORDER,
+  "rule",
+  "conversation",
+];
+
+export const PROMPT_SLICE_TEXT_LIMIT = 4000;
+
+export function clipPromptText(value: string, max = PROMPT_SLICE_TEXT_LIMIT): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max - 1)}…`;
+}
+
+export function toSliceSummary(slice: ContextSlice): ContextSliceSummary {
+  return {
+    id: slice.id,
+    source: slice.source,
+    tokens: slice.tokens,
+    included: true,
+    text: clipPromptText(slice.text),
+    meta: slice.meta,
+  };
+}
 
 const HEADINGS: Partial<Record<ContextSourceId, string>> = {
   skill: "Skills",

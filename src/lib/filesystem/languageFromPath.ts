@@ -32,8 +32,15 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   svg: "xml",
 };
 
+const MARKDOWN_DOCUMENT_EXTENSIONS = new Set(["md", "markdown"]);
+
 export function languageFromPath(path: string): string {
   const extension = extensionOf(path);
   if (!extension) return "plaintext";
   return LANGUAGE_BY_EXTENSION[extension] ?? "plaintext";
+}
+
+export function isMarkdownDocumentPath(path: string): boolean {
+  const extension = extensionOf(path);
+  return extension !== undefined && MARKDOWN_DOCUMENT_EXTENSIONS.has(extension);
 }

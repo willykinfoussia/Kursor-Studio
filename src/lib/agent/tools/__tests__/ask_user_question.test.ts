@@ -3,12 +3,12 @@ import type { AgentInteractionMode } from "../../modes";
 import { createAskUserQuestionTool } from "../workflowTools";
 import { idleToolContext } from "../result";
 import { WorkflowSessionState } from "../../workflow/sessionState";
-import type { AgentHarnessHooks, UserQuestionRequest } from "../../workflow/harness";
+import type { AgentHarnessHooks, UserQuestionAnswer, UserQuestionRequest } from "../../workflow/harness";
 import type { AgentEvent } from "../../types";
 
 function mockHarness(
   session = new WorkflowSessionState(),
-  answer: { selected: string; allow: boolean } = { selected: "yes", allow: true },
+  answer: UserQuestionAnswer = { selected: "yes", allow: true },
   onAsk?: (request: UserQuestionRequest) => void,
 ): AgentHarnessHooks {
   const harness: AgentHarnessHooks = {
@@ -65,7 +65,7 @@ describe("ask_user_question", () => {
     session.goalKind = "build";
     session.markSkillCheck("brainstorming");
     const events: AgentEvent[] = [];
-    const harness = mockHarness(session, { selected: "oui", allow: true });
+    const harness = mockHarness(session, { selected: "oui", allow: true, reply: "design_yes" });
     const tool = createAskUserQuestionTool();
     const result = await tool.execute(
       { prompt: "Ce design vous convient ?", kind: "design", options: ["oui", "non"] },
@@ -87,7 +87,7 @@ describe("ask_user_question", () => {
     session.goalKind = "build";
     session.markSkillCheck("brainstorming");
     const events: AgentEvent[] = [];
-    const harness = mockHarness(session, { selected: "Yes, proceed", allow: true });
+    const harness = mockHarness(session, { selected: "Yes, proceed", allow: true, reply: "design_yes" });
     const tool = createAskUserQuestionTool();
     const result = await tool.execute(
       {
@@ -114,7 +114,7 @@ describe("ask_user_question", () => {
     session.goalKind = "build";
     session.markSkillCheck("brainstorming");
     const events: AgentEvent[] = [];
-    const harness = mockHarness(session, { selected: "Oui, c'est bon", allow: true });
+    const harness = mockHarness(session, { selected: "Oui, c'est bon", allow: true, reply: "design_yes" });
     const tool = createAskUserQuestionTool();
     const result = await tool.execute(
       {
@@ -140,7 +140,7 @@ describe("ask_user_question", () => {
     const session = new WorkflowSessionState();
     session.goalKind = "build";
     session.markSkillCheck("brainstorming");
-    const harness = mockHarness(session, { selected: "Yes, I approve", allow: false });
+    const harness = mockHarness(session, { selected: "Yes, I approve", allow: false, reply: "design_yes" });
     const tool = createAskUserQuestionTool();
     await tool.execute(
       {
@@ -161,7 +161,7 @@ describe("ask_user_question", () => {
     const session = new WorkflowSessionState();
     session.goalKind = "build";
     session.markSkillCheck("brainstorming");
-    const harness = mockHarness(session, { selected: "Oui, j'approuve", allow: false });
+    const harness = mockHarness(session, { selected: "Oui, j'approuve", allow: false, reply: "design_yes" });
     const tool = createAskUserQuestionTool();
     await tool.execute(
       {

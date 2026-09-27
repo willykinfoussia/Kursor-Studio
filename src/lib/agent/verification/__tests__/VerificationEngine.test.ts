@@ -77,6 +77,8 @@ describe("VerificationEngine", () => {
     const forModel = formatForModel(report);
     expect(forModel).toContain("Exit code: 1");
     expect(forModel).toContain("src/app.ts");
+    expect(forModel).toMatch(/pre-existing/);
+    expect(forModel).toContain("finish_development_branch");
     expect(clipVerifyOutput("x".repeat(10_000)).length).toBeLessThan(5_000);
     expect(extractErrorPath("--> src/main.rs:9:1")).toBe("src/main.rs");
   });

@@ -15,7 +15,7 @@ describe("bindContinuingProjectPlan", () => {
     plan.todos[0]!.status = "completed";
     usePlanStore.getState().upsertPlan(plan);
     const session = new WorkflowSessionState();
-    const bound = bindContinuingProjectPlan(session, "finalise l'implémentation de l'application de sport");
+    const bound = bindContinuingProjectPlan(session, true);
     expect(bound?.path).toBe(plan.path);
     expect(session.planPath).toBe(plan.path);
     expect(session.planApproved).toBe(true);
@@ -29,7 +29,7 @@ describe("bindContinuingProjectPlan", () => {
     plan.status = "building";
     usePlanStore.getState().upsertPlan(plan);
     const session = new WorkflowSessionState();
-    expect(bindContinuingProjectPlan(session, "ajoute une page settings")).toBeNull();
+    expect(bindContinuingProjectPlan(session, false)).toBeNull();
     expect(session.planPath).toBeNull();
     expect(session.planApproved).toBe(false);
   });

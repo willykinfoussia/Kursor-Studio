@@ -130,7 +130,8 @@ describe("AgentLoop", () => {
 
     expect(calls).toEqual([AI_MODELS[0].id]);
     expect(events.some((event) => event.type === "fallback")).toBe(false);
-    expect(events[events.length - 1]?.type).toBe("cancelled");
+    expect(events.some((event) => event.type === "cancelled")).toBe(true);
+    expect(events[events.length - 1]?.type).toBe("recovery-available");
     expect(runtime.getState().status).toBe("cancelled");
   });
 

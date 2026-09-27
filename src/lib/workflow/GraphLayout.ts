@@ -234,8 +234,8 @@ export function layoutGraph(
   graph.setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: layout === "tree" ? "TB" : "LR",
-    nodesep: 36,
-    ranksep: 72,
+    nodesep: 56,
+    ranksep: 96,
     edgesep: 16,
     marginx: 24,
     marginy: 24,

@@ -298,7 +298,12 @@ export function applyAgentEvent(
       }]);
     }
     case "error":
-      return [...current, { type: "system", id: `error:${event.requestId}`, kind: "error", text: event.message }];
+      return [...current, {
+        type: "system",
+        id: `error:${event.requestId}`,
+        kind: event.message.startsWith("Verification failed") ? "recovery" : "error",
+        text: event.message,
+      }];
     case "cancelled":
       return markPlansCompleted([...current, {
         type: "system",

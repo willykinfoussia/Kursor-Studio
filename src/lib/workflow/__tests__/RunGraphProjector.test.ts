@@ -206,6 +206,31 @@ describe("GraphSearch", () => {
     expect(searchGraphNodes(graph.nodes, "error").some((hit) => hit.type === "error")).toBe(true);
     expect(searchGraphNodes(graph.nodes, "laguna").some((hit) => hit.type === "agent" || hit.type === "user_prompt")).toBe(true);
   });
+
+  it("chains agent turns around the tools and skills of each step", () => {
+    const graph = projectRun([
+      event(1, prompt),
+      event(2, { type: "step-started", stepId: "s1", index: 0, kind: "model" }),
+      event(3, { type: "assistant-message", messageId: "m1", text: "I will read the file." }),
+      event(4, { type: "tool-started", id: "t1", tool: "read_file", input: { path: "src/App.tsx" } }),
+      event(5, { type: "tool-completed", id: "t1", tool: "read_file", output: "export function App() {}" }),
+      event(6, { type: "skill-loaded", skillId: "brainstorming", name: "Brainstorming" }),
+      event(7, { type: "step-started", stepId: "s2", index: 1, kind: "model" }),
+      event(8, { type: "assistant-message", messageId: "m1", text: "Done." }),
+    ]);
+    const first = graph.nodes.find((node) => node.id === "turn:s1");
+    const second = graph.nodes.find((node) => node.id === "turn:s2");
+    const tool = graph.nodes.find((node) => node.id === nodeIdForTool("t1"));
+    expect(first?.metadata?.inputPrompt).toBe("Add auth");
+    expect(first?.metadata?.outputPrompt).toBe("I will read the file.");
+    expect(tool?.metadata?.content).toContain("export function App");
+    expect(second?.metadata?.inputPrompt).toContain("export function App");
+    expect(second?.metadata?.outputPrompt).toBe("Done.");
+    expect(graph.edges.some((edge) => edge.source === "turn:s1" && edge.target === nodeIdForTool("t1"))).toBe(true);
+    expect(graph.edges.some((edge) => edge.source === nodeIdForTool("t1") && edge.target === "turn:s2")).toBe(true);
+    expect(graph.edges.some((edge) => edge.source === "turn:s1" && edge.target === "turn:s2")).toBe(false);
+    expect(graph.edges.some((edge) => edge.source === "turn:s1" && edge.target.includes("brainstorming"))).toBe(true);
+  });
 });
 
 describe("RunGraphProjector incremental", () => {

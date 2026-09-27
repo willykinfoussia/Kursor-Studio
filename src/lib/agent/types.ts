@@ -170,7 +170,7 @@ export type AgentEvent =
   | { type: "error"; requestId: string; message: string }
   | { type: "fallback"; fromModel: string; toModel: string; reason: string }
   | { type: "cancelled"; requestId: string }
-  | { type: "context-assembled"; tokensUsed: number; trace: import("./context/types").ContextTraceEntry[]; slices?: import("./context/types").ContextSliceSummary[] }
+  | { type: "context-assembled"; tokensUsed: number; trace: import("./context/types").ContextTraceEntry[]; slices?: import("./context/types").ContextSliceSummary[]; systemPrompt?: string; scope?: "parent" | "subagent" }
   | { type: "task-started"; taskId: string; title: string }
   | { type: "task-completed"; taskId: string; status: "completed" | "failed" }
   | { type: "skill-selected"; skillId: string; name: string; reason?: string; version?: string }
@@ -208,6 +208,15 @@ export type AgentEvent =
   | { type: "hook-denied"; event: string; message: string; metadata?: Record<string, string> }
   | { type: "hook-warned"; event: string; message: string; metadata?: Record<string, string> }
   | { type: "hook-fired"; event: string; hook: string; result: "continue" | "block" | "warn" | "modify"; message?: string }
+  | {
+      type: "turn-classified";
+      goalKind: import("./workflow/sessionState").GoalKind;
+      complexity: import("./workflows/types").TaskComplexity;
+      reply: import("./workflows/turnClassifier").TurnReply;
+      skipProcess: boolean;
+      continuation: import("./workflows/turnClassifier").TurnContinuation;
+      modelTask: import("./routing/types").ModelTaskType;
+    }
   | { type: "workflow-started"; runId: string; workflowId: string; complexity: import("./workflows/types").TaskComplexity; stepIds: string[]; goalKind?: import("./workflow/sessionState").GoalKind; skipProcess?: boolean }
   | { type: "workflow-step"; runId: string; stepId: string; status: import("./workflows/types").WorkflowStepStatus }
   | { type: "workflow-checkpoint"; runId: string; checkpoint: import("./workflows/types").WorkflowCheckpoint }

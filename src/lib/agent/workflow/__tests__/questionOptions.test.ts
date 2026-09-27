@@ -79,8 +79,8 @@ describe("normalizeAskUserQuestionInput", () => {
 describe("shouldApproveDesignFromQuestion", () => {
   it("approves a yes on a yes/no design question", () => {
     const yesNo = parseQuestionOptions(["oui", "non"]);
-    expect(shouldApproveDesignFromQuestion("design", yesNo, "oui")).toBe(true);
-    expect(shouldApproveDesignFromQuestion("question", yesNo, "oui")).toBe(false);
+    expect(shouldApproveDesignFromQuestion("design", yesNo, "oui", "design_yes")).toBe(true);
+    expect(shouldApproveDesignFromQuestion("question", yesNo, "oui", "design_yes")).toBe(false);
   });
 
   it("approves Yes, proceed even when the other option is Changes needed", () => {
@@ -88,9 +88,9 @@ describe("shouldApproveDesignFromQuestion", () => {
       { id: "yes", label: "Yes, proceed" },
       { id: "changes", label: "Changes needed", description: "Tell me what to adjust" },
     ]);
-    expect(shouldApproveDesignFromQuestion("design", golf, "Yes, proceed")).toBe(true);
-    expect(shouldApproveDesignFromQuestion("design", golf, "yes")).toBe(true);
-    expect(shouldApproveDesignFromQuestion("design", golf, "Changes needed")).toBe(false);
+    expect(shouldApproveDesignFromQuestion("design", golf, "Yes, proceed", "design_yes")).toBe(true);
+    expect(shouldApproveDesignFromQuestion("design", golf, "yes", "design_yes")).toBe(true);
+    expect(shouldApproveDesignFromQuestion("design", golf, "Changes needed", "none")).toBe(false);
   });
 
   it("approves Yes, I approve on a design picker", () => {
@@ -98,8 +98,8 @@ describe("shouldApproveDesignFromQuestion", () => {
       { id: "yes-chat", label: "Yes, I approve" },
       { id: "changes", label: "I want changes" },
     ]);
-    expect(shouldApproveDesignFromQuestion("design", confirm, "Yes, I approve")).toBe(true);
-    expect(shouldApproveDesignFromQuestion("design", confirm, "I want changes")).toBe(false);
+    expect(shouldApproveDesignFromQuestion("design", confirm, "Yes, I approve", "design_yes")).toBe(true);
+    expect(shouldApproveDesignFromQuestion("design", confirm, "I want changes", "none")).toBe(false);
   });
 
   it("approves Oui, j'approuve on a design picker", () => {
@@ -107,8 +107,8 @@ describe("shouldApproveDesignFromQuestion", () => {
       { id: "yes", label: "Oui, j'approuve" },
       { id: "changes", label: "Non, je veux changer quelque chose" },
     ]);
-    expect(shouldApproveDesignFromQuestion("design", confirm, "Oui, j'approuve")).toBe(true);
-    expect(shouldApproveDesignFromQuestion("design", confirm, "Non, je veux changer quelque chose")).toBe(false);
+    expect(shouldApproveDesignFromQuestion("design", confirm, "Oui, j'approuve", "design_yes")).toBe(true);
+    expect(shouldApproveDesignFromQuestion("design", confirm, "Non, je veux changer quelque chose", "design_no")).toBe(false);
   });
 
   it("does not approve a stack or product MCQ even on yes", () => {
@@ -116,7 +116,7 @@ describe("shouldApproveDesignFromQuestion", () => {
       { label: "Next.js + TypeScript", description: "Full-stack" },
       { label: "Python + FastAPI", description: "Backend Python" },
     ]);
-    expect(shouldApproveDesignFromQuestion("design", stacks, "yes")).toBe(false);
-    expect(shouldApproveDesignFromQuestion("design", stacks, "Next.js + TypeScript")).toBe(false);
+    expect(shouldApproveDesignFromQuestion("design", stacks, "yes", "design_yes")).toBe(false);
+    expect(shouldApproveDesignFromQuestion("design", stacks, "Next.js + TypeScript", "none")).toBe(false);
   });
 });

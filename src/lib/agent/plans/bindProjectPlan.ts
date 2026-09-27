@@ -1,6 +1,6 @@
 import { latestPlanPath, planByPath, usePlanStore, writablePlanPath } from "../../../stores/planStore";
 import type { PlanDocument, PlanStatus } from "./types";
-import { isContinuationPrompt, type WorkflowSessionState } from "../workflow/sessionState";
+import type { WorkflowSessionState } from "../workflow/sessionState";
 
 const RESTORE_STATUSES = new Set<PlanStatus>(["approved", "building", "done"]);
 
@@ -24,11 +24,11 @@ export function restoreSessionFromPlan(session: WorkflowSessionState, plan: Plan
 /** Bind the project's latest plan when a new chat continues/finalizes existing work. */
 export function bindContinuingProjectPlan(
   session: WorkflowSessionState,
-  prompt: string,
+  continuing: boolean,
   state = usePlanStore.getState(),
 ): PlanDocument | null {
   if (session.planPath) return planByPath(state, session.planPath);
-  if (!isContinuationPrompt(prompt)) return null;
+  if (!continuing) return null;
   const path = writablePlanPath(state) ?? latestPlanPath(state);
   if (!path) return null;
   const plan = planByPath(state, path)

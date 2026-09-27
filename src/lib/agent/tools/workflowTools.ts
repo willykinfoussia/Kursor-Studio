@@ -87,13 +87,14 @@ export function createAskUserQuestionTool(): AgentTool {
         return failResult("no_harness", "Cannot ask the user outside the agent harness.");
       }
       const answer = await harness.askUser({ id, prompt, options, kind });
-      const allowed = answer.allow || isAffirmativeReply(answer.selected);
+      const reply = answer.reply ?? "none";
+      const allowed = answer.allow || isAffirmativeReply(reply);
       if (!harness.workflow.planApproved && kind !== "finish-branch") {
         const choice = matchedQuestionChoice(options, answer.selected);
-        harness.workflow.recordDesignChoice(choice?.label ?? answer.selected);
+        harness.workflow.recordDesignChoice(choice?.label ?? answer.selected, reply);
       }
       if (
-        shouldApproveDesignFromQuestion(kind, options, answer.selected)
+        shouldApproveDesignFromQuestion(kind, options, answer.selected, reply)
         && !harness.workflow.designApproved
       ) {
         const modeBefore = harness.workflow.interactionMode;

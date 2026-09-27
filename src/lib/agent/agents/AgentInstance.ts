@@ -1,6 +1,7 @@
 import { AgentExecution } from "../AgentExecution";
 import type { AgentLoop } from "../AgentLoop";
 import { buildSystemPrompt } from "../systemPrompt";
+import { clipPromptText, toSliceSummary } from "../context/assemble";
 import type { ContextBuilder } from "../ContextBuilder";
 import { TaskGrantStore } from "../permissions/grants";
 import type { PermissionMode, PermissionPrompter } from "../PermissionManager";
@@ -155,13 +156,9 @@ export class AgentInstance {
         type: "context-assembled",
         tokensUsed: context.assembled.tokensUsed,
         trace: context.assembled.trace,
-        slices: context.assembled.slices.map((slice) => ({
-          id: slice.id,
-          source: slice.source,
-          tokens: slice.tokens,
-          included: true,
-          meta: slice.meta,
-        })),
+        slices: context.assembled.slices.map(toSliceSummary),
+        systemPrompt: clipPromptText(context.assembled.systemPrompt),
+        scope: "subagent",
       });
       skillSession.emit = (event) => this.options.emit(event);
       for (const skill of skillSession.invoked) {

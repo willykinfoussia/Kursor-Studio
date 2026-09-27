@@ -77,6 +77,12 @@ export function extractPhasePrompts(events: readonly AgentRunEvent[]): Map<strin
     const payload = event.payload;
 
     switch (payload.type) {
+      case "task-started": {
+        if (!runUserPrompt) runUserPrompt = payload.title;
+        lastAgentOrUser = runUserPrompt;
+        setOutput(map, PIPELINE_IDS.user, runUserPrompt, "user");
+        break;
+      }
       case "started": {
         runUserPrompt = payload.userMessage.content;
         lastAgentOrUser = runUserPrompt;
@@ -209,7 +215,14 @@ export function extractPhasePrompts(events: readonly AgentRunEvent[]): Map<strin
       }
       case "context-assembled": {
         setInput(map, PIPELINE_IDS.context, runUserPrompt, "user");
-        setOutput(map, PIPELINE_IDS.context, `${payload.tokensUsed} tokens · ${(payload.slices ?? payload.trace).length} slices`, "system");
+        const assembled = payload.systemPrompt?.trim();
+        setOutput(
+          map,
+          PIPELINE_IDS.context,
+          assembled || `${payload.tokensUsed} tokens · ${(payload.slices ?? payload.trace).length} slices`,
+          "system",
+        );
+        if (assembled) setOutput(map, PIPELINE_IDS.ctxAssemble, assembled, "system");
         break;
       }
       case "completed": {

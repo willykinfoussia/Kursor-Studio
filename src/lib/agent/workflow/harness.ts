@@ -1,5 +1,6 @@
 import type { AgentInteractionMode } from "../modes";
 import type { DelegateReport, SpecialistId } from "../agents/types";
+import type { TurnReply } from "../workflows/turnClassifier";
 import type { QuestionChoice } from "./questionOptions";
 import type { WorkflowSessionState } from "./sessionState";
 
@@ -13,6 +14,7 @@ export interface UserQuestionRequest {
 export interface UserQuestionAnswer {
   selected: string;
   allow: boolean;
+  reply?: TurnReply;
 }
 
 export interface AgentSpawnInput {

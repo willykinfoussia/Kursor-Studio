@@ -34,8 +34,13 @@ describe("PipelineBinder", () => {
     const idle = idlePipelineGraph();
     const bound = bindPipeline([]);
     expect(bound.nodes.length).toBe(idle.nodes.length);
-    expect(bound.nodes.some((node) => node.id === PIPELINE_IDS.boot)).toBe(true);
+    expect(bound.nodes.some((node) => node.id === PIPELINE_IDS.boot)).toBe(false);
+    expect(bound.edges.some((edge) => edge.source === PIPELINE_IDS.user && edge.target === PIPELINE_IDS.task)).toBe(true);
+    expect(bound.edges.some((edge) => edge.source === PIPELINE_IDS.boot && edge.target === PIPELINE_IDS.user)).toBe(false);
     expect(bound.nodes.some((node) => node.id === PIPELINE_IDS.knowledgeReflect)).toBe(true);
+    expect(bound.nodes.some((node) => node.id === PIPELINE_IDS.classify)).toBe(true);
+    expect(bound.edges.some((edge) => edge.source === PIPELINE_IDS.hook && edge.target === PIPELINE_IDS.classify)).toBe(true);
+    expect(bound.edges.some((edge) => edge.source === PIPELINE_IDS.classify && edge.target === PIPELINE_IDS.compact)).toBe(true);
     expect(bound.nodes.some((node) => node.id === PIPELINE_IDS.skillCheck)).toBe(true);
     expect(bound.nodes.some((node) => node.id === PIPELINE_IDS.explain)).toBe(true);
     expect(bound.nodes.some((node) => node.id === PIPELINE_IDS.bug)).toBe(true);
@@ -67,6 +72,70 @@ describe("PipelineBinder", () => {
     expect(bound.edges.some((edge) => edge.source === PIPELINE_IDS.verificationBeforeCompletion && edge.target === PIPELINE_IDS.finishing)).toBe(true);
     expect(bound.edges.some((edge) => edge.type === "loop" && edge.source === PIPELINE_IDS.review && edge.target === PIPELINE_IDS.executingPlans)).toBe(false);
     expect(bound.nodes.every((node) => node.status === "idle")).toBe(true);
+  });
+
+  it("chains the user prompt, injected skill, and included slices before Session", () => {
+    const graph = bindPipeline([
+      event(1, { type: "task-started", taskId: "t1", title: "Rename the button" }),
+      event(2, {
+        type: "context-assembled",
+        tokensUsed: 12,
+        trace: [{ source: "editor", included: true, reason: "selected", tokens: 12 }],
+        slices: [{ id: "editor:1", source: "editor", tokens: 12, included: true, text: "export function Button() {}" }],
+        scope: "parent",
+      }),
+    ]);
+    const prompt = graph.nodes.find((node) => node.id === PIPELINE_IDS.user);
+    const skill = graph.nodes.find((node) => node.id === PIPELINE_IDS.boot);
+    const editor = graph.nodes.find((node) => node.id === PIPELINE_IDS.slice("editor"));
+    const project = graph.nodes.find((node) => node.id === PIPELINE_IDS.slice("project"));
+    expect(prompt?.metadata?.content).toBe("Rename the button");
+    expect(skill?.status).toBe("completed");
+    expect(String(skill?.metadata?.content)).toContain("using-superpowers");
+    expect(editor?.parentId).toBeUndefined();
+    expect(editor?.metadata?.content).toContain("Button");
+    expect(project?.parentId).toBe(PIPELINE_IDS.context);
+    expect(graph.edges.some((edge) => edge.source === PIPELINE_IDS.user && edge.target === PIPELINE_IDS.boot)).toBe(true);
+    expect(graph.edges.some((edge) => edge.source === PIPELINE_IDS.boot && edge.target === PIPELINE_IDS.slice("editor"))).toBe(true);
+    expect(graph.edges.some((edge) => edge.source === PIPELINE_IDS.slice("editor") && edge.target === PIPELINE_IDS.task)).toBe(true);
+    expect(graph.edges.some((edge) => edge.source === PIPELINE_IDS.user && edge.target === PIPELINE_IDS.task)).toBe(false);
+  });
+
+  it("keeps using-superpowers off the map for a subagent assemble", () => {
+    const graph = bindPipeline([
+      event(1, {
+        type: "context-assembled",
+        tokensUsed: 1,
+        trace: [],
+        slices: [],
+        scope: "subagent",
+      }),
+    ]);
+    expect(graph.nodes.some((node) => node.id === PIPELINE_IDS.boot)).toBe(false);
+    expect(graph.edges.some((edge) => edge.source === PIPELINE_IDS.user && edge.target === PIPELINE_IDS.task)).toBe(true);
+  });
+
+  it("stores the loaded skill body on the process node", () => {
+    const graph = bindPipeline([
+      event(1, { type: "skill-loaded", skillId: "brainstorming", name: "Brainstorming" }),
+    ]);
+    const node = graph.nodes.find((item) => item.id === PIPELINE_IDS.brainstorming);
+    expect(typeof node?.metadata?.content).toBe("string");
+    expect(String(node?.metadata?.content).length).toBeGreaterThan(20);
+  });
+
+  it("replaces the prompt text with the message sent to the model", () => {
+    const graph = bindPipeline([
+      event(1, { type: "task-started", taskId: "t1", title: "raw" }),
+      event(2, {
+        type: "started",
+        requestId: "run-1",
+        messageId: "m1",
+        model: "laguna",
+        userMessage: { id: "u1", role: "user", content: "rewritten by slash", timestamp: 1 },
+      }),
+    ]);
+    expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.user)?.metadata?.content).toBe("rewritten by slash");
   });
 
   it("packs filets on overview and keeps streamText for the AgentLoop drill", () => {
@@ -277,9 +346,12 @@ describe("PipelineBinder", () => {
         tokensUsed: 400,
         trace: [{ source: "conversation", included: true, reason: "selected", tokens: 80 }],
         slices: [{ id: "conversation:0", source: "conversation", tokens: 80, included: true }],
+        systemPrompt: "Kursor rules\n\nWorkspace: demo",
       }),
     ]);
     expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.context)?.status).toBe("completed");
+    expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.context)?.metadata?.content).toContain("Kursor rules");
+    expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.ctxAssemble)?.metadata?.content).toContain("Workspace: demo");
     expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.ctxRank)?.status).toBe("completed");
     expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.compact)?.status).toBe("skipped");
   });
@@ -388,6 +460,38 @@ describe("PipelineBinder", () => {
     expect(brainstorm?.metadata?.outputRole).toBe("agent");
     const user = graph.nodes.find((node) => node.id === PIPELINE_IDS.user);
     expect(user?.metadata?.outputPrompt).toBe("Add auth");
+  });
+
+  it("completes Classify JEV from turn-classified and skips it on an old replay", () => {
+    const classified = bindPipeline([
+      event(1, {
+        type: "turn-classified",
+        goalKind: "build",
+        complexity: "medium",
+        reply: "none",
+        skipProcess: false,
+        continuation: "new",
+        modelTask: "coding",
+      }),
+    ]);
+    const node = classified.nodes.find((item) => item.id === PIPELINE_IDS.classify);
+    expect(node?.status).toBe("completed");
+    expect(node?.metadata?.goalKind).toBe("build");
+    expect(node?.metadata?.complexity).toBe("medium");
+    expect(String(node?.metadata?.content)).toContain("goalKind: build");
+
+    const replay = bindPipeline([
+      event(1, { type: "completed", requestId: "run-1", messageId: "m1", model: "laguna" }),
+    ]);
+    expect(replay.nodes.find((item) => item.id === PIPELINE_IDS.classify)?.status).toBe("skipped");
+  });
+
+  it("skips Classify JEV when the prompt hook denies", () => {
+    const graph = bindPipeline([
+      event(1, { type: "hook-denied", event: "user_prompt_submit", message: "Blocked by hook." }),
+    ]);
+    expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.classify)?.status).toBe("skipped");
+    expect(graph.nodes.find((node) => node.id === PIPELINE_IDS.hook)?.status).toBe("failed");
   });
 
   it("keeps Knowledge reflect idle after completed until a reflect event", () => {

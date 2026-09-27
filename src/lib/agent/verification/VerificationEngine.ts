@@ -128,6 +128,8 @@ export function formatForModel(report: VerificationReport): string {
   const lines = [
     `Verification failed (attempt ${report.attempts}/${MAX_VERIFICATION_ATTEMPTS}).`,
     "Do not declare the task done until required checks pass.",
+    "Every failing check is in scope. Do not classify it as pre-existing, unrelated, or already broken.",
+    "Do not call finish_development_branch again until this report is green.",
   ];
   for (const result of report.results) {
     if (result.skipped || result.ok || result.cancelled) continue;

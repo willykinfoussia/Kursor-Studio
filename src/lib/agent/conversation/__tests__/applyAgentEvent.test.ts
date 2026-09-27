@@ -308,6 +308,19 @@ describe("applyAgentEvent", () => {
     });
   });
 
+  it("renders a verification failure as a recovery notice, not Unable to continue", () => {
+    const items = reduce([
+      { type: "error", requestId: "r", message: "Verification failed (attempt 3/3).\nCheck lint failed." },
+    ]);
+    expect(items).toEqual([{
+      type: "system",
+      id: "error:r",
+      kind: "recovery",
+      text: "Verification failed (attempt 3/3).\nCheck lint failed.",
+    }]);
+    expect(JSON.stringify(items)).not.toMatch(/Unable to continue/);
+  });
+
   it("renders hook-denied as a mode notice, not Unable to continue", () => {
     const items = reduce([
       { type: "hook-denied", event: "before_tool", message: "Path .git is protected" },

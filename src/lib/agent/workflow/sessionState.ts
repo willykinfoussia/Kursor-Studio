@@ -3,10 +3,11 @@ import {
   migrateInteractionMode,
   type AgentInteractionMode,
 } from "../modes";
+import type { ModelTaskType } from "../routing/types";
+import type { TaskComplexity } from "../workflows/types";
+import { routeGoalKind, type TurnReply, type TurnVerdict } from "../workflows/turnClassifier";
 import { isAffirmativeReply, isDesignApprovalReply, isDesignRejectionReply } from "./approvalLanguage";
 
-const TRIVIAL_DESIGN_NOTE = /^(?:yes|no|oui|non|ok|okay|deny)[.!]*$/i;
-const YES_NO_PREFIX = /^(?:yes|y|oui|ouais|no|non)\b/i;
 const CATEGORY_PREFIX = /^(?:[\p{L}\d][\p{L}\d\s/]*)\s+[—–-]\s+/u;
 
 export function normalizeDesignNote(label: string): string {
@@ -16,12 +17,7 @@ export function normalizeDesignNote(label: string): string {
 }
 
 export function isRecordableDesignNote(label: string): boolean {
-  const trimmed = label.trim();
-  if (!trimmed) return false;
-  if (TRIVIAL_DESIGN_NOTE.test(trimmed)) return false;
-  if (isDesignApprovalReply(trimmed)) return false;
-  if (YES_NO_PREFIX.test(trimmed)) return false;
-  return true;
+  return Boolean(normalizeDesignNote(label));
 }
 
 export type GoalKind = "explain" | "build" | "bug" | "other";
@@ -33,6 +29,7 @@ export type ChatApprovalResult = {
 
 export type BeginUserTurnOptions = {
   cycleIdle?: boolean;
+  verdict?: TurnVerdict;
 };
 
 export interface DesignApproval {
@@ -62,29 +59,6 @@ function restoreAgentBranch(data: WorkflowSessionPersist): AgentBranchState | nu
   return null;
 }
 
-const SKIP_PROCESS = /\b(skip (?:skills?|superpowers|process)|no skills?|sans skill)\b/i;
-const BUILD = /\b(let'?s (?:make|build|create)|ajoute|add(?:e)?(?:r)?|create|cr[eé]e[er]?|implement|new feature|build|feature|construis(?:e|er)?|d[eé]veloppe(?:r)?)\b/i;
-const CONTINUE = /\b(finalis(?:e|er|é)?|finish(?:ing|ed)?|complete(?:d|ing)?|termin(?:e|er|é)?|v[eé]rif(?:ie(?:r)?|ication)?|verify|verification|smoke(?:\s*-?\s*test)?|continue)\b/i;
-const EXPLAIN = /\b(explain|explique|what does|how does this (?:file|code)|à quoi sert)\b/i;
-const BUG = /\b(bug|crash|failing test|tests? (?:auth )?échou|fix this|broken)\b/i;
-
-export function isContinuationPrompt(prompt: string): boolean {
-  return CONTINUE.test(prompt.trim());
-}
-
-export function classifyGoalKind(prompt: string): GoalKind {
-  const text = prompt.trim();
-  if (!text) return "other";
-  if (EXPLAIN.test(text) && !BUILD.test(text) && !CONTINUE.test(text)) return "explain";
-  if (BUG.test(text) && !CONTINUE.test(text)) return "bug";
-  if (BUILD.test(text) || CONTINUE.test(text)) return "build";
-  return "other";
-}
-
-export function explicitSkipProcess(prompt: string) {
-  return SKIP_PROCESS.test(prompt);
-}
-
 function planStillOpen(plan?: { status?: string; todos?: { status: string }[] } | null): boolean {
   if (!plan || plan.status === "done") return false;
   return (plan.todos ?? []).some((todo) => todo.status === "pending" || todo.status === "in_progress");
@@ -98,10 +72,10 @@ export function shouldCloseImplementationCycle(
     planTodosComplete?: boolean;
   },
   plan?: { status?: string; todos?: { status: string }[] } | null,
-  prompt?: string,
+  continuing = false,
 ): boolean {
   if (session.skipProcess) return false;
-  if (prompt && isContinuationPrompt(prompt)) return false;
+  if (continuing) return false;
   if (session.planApproved) {
     if (session.planTodosComplete) return true;
     if (!plan && session.planPath) return false;
@@ -124,6 +98,8 @@ export class WorkflowSessionState {
   criticalReviewOpen = false;
   lastUserPrompt = "";
   goalKind: GoalKind = "other";
+  complexity: TaskComplexity = "medium";
+  modelTask: ModelTaskType = "coding";
   subagent = false;
   compactTimes: number[] = [];
   invokedSkillIds: string[] = [];
@@ -144,28 +120,39 @@ export class WorkflowSessionState {
     this.resetExploreStepBarrier();
     this.resetAgentPairBarrier();
     this.resetSkillCheckStepBarrier();
+    const verdict = options?.verdict;
     const previousGoal = this.goalKind;
     const previousSkillCheck = this.skillCheckThisTurn;
-    const affirmative = isAffirmativeReply(prompt);
-    const rejected = isDesignRejectionReply(prompt);
+    const reply = verdict?.reply ?? "none";
+    const affirmative = isAffirmativeReply(reply);
+    const rejected = isDesignRejectionReply(reply);
+    const continuing = verdict?.continuation === "continue";
     this.lastUserPrompt = prompt;
+    if (verdict) {
+      this.complexity = verdict.complexity;
+      this.modelTask = verdict.modelTask;
+    }
+    const verdictKind = verdict?.goalKind;
+    const defectOrQuestion = verdictKind === "bug" || verdictKind === "explain";
     if (rejected && previousGoal === "build") {
       this.goalKind = "build";
       this.rejectDesign();
-    } else if (affirmative && previousGoal !== "other") {
+    } else if (defectOrQuestion && reply !== "design_yes" && verdict) {
+      this.goalKind = routeGoalKind(verdict, this.interactionMode);
+    } else if ((affirmative || continuing) && previousGoal !== "other") {
       this.goalKind = previousGoal;
-    } else {
-      this.goalKind = classifyGoalKind(prompt);
+    } else if (verdict) {
+      this.goalKind = routeGoalKind(verdict, this.interactionMode);
     }
     if (this.interactionMode === "ask") this.goalKind = "explain";
     if (this.interactionMode === "debug") this.goalKind = "bug";
-    const continues = affirmative && this.goalKind === previousGoal && previousGoal !== "other";
+    const continues = (affirmative || continuing) && this.goalKind === previousGoal && previousGoal !== "other";
     this.skillCheckThisTurn = continues
       ? previousSkillCheck || this.invokedSkillIds.length > 0
       : false;
-    if (explicitSkipProcess(prompt)) this.skipProcess = true;
-    const result = affirmative
-      ? this.applyAffirmativeApprovals(prompt)
+    if (verdict?.skipProcess === "skip") this.skipProcess = true;
+    const result = isDesignApprovalReply(reply)
+      ? this.applyAffirmativeApprovals(reply)
       : { designApproved: false, planApproved: false };
     this.ensurePlanModeForBuild();
     return result;
@@ -186,6 +173,16 @@ export class WorkflowSessionState {
     this.skillCheckThisTurn = true;
     if (skillId && !this.invokedSkillIds.includes(skillId)) {
       this.invokedSkillIds.push(skillId);
+    }
+    if (
+      skillId === "systematic-debugging"
+      && this.goalKind === "build"
+      && !this.designApproved
+      && !this.planApproved
+      && this.interactionMode === "agent"
+      && !this.invokedSkillIds.includes("brainstorming")
+    ) {
+      this.goalKind = "bug";
     }
   }
 
@@ -342,8 +339,9 @@ export class WorkflowSessionState {
     this.resetSkillCheckStepBarrier();
   }
 
-  recordDesignChoice(label: string) {
+  recordDesignChoice(label: string, reply: TurnReply = "none") {
     if (this.planApproved) return;
+    if (reply !== "none") return;
     const trimmed = label.trim();
     if (!isRecordableDesignNote(trimmed)) return;
     const note = normalizeDesignNote(trimmed);
@@ -359,12 +357,12 @@ export class WorkflowSessionState {
   }
 
   /** Chat / free-text yes while waiting on design. Plans are approved only via Build. */
-  applyAffirmativeApprovals(prompt: string): ChatApprovalResult {
+  applyAffirmativeApprovals(reply: TurnReply): ChatApprovalResult {
     const result: ChatApprovalResult = { designApproved: false, planApproved: false };
-    if (!isDesignApprovalReply(prompt)) return result;
+    if (!isDesignApprovalReply(reply)) return result;
     const needsDesign = !this.designApproved && this.invokedSkillIds.includes("brainstorming");
     if (needsDesign) {
-      this.approveDesign(prompt);
+      this.approveDesign(this.lastUserPrompt);
       result.designApproved = true;
     }
     return result;
@@ -382,6 +380,8 @@ export class WorkflowSessionState {
     next.designNotes = [...this.designNotes];
     next.designBrief = this.designBrief;
     next.goalKind = this.goalKind;
+    next.complexity = this.complexity;
+    next.modelTask = this.modelTask;
     next.lastUserPrompt = this.lastUserPrompt;
     next.invokedSkillIds = [...this.invokedSkillIds];
     next.brainstormExploreDone = this.brainstormExploreDone;
@@ -406,6 +406,8 @@ export class WorkflowSessionState {
       criticalReviewOpen: this.criticalReviewOpen,
       lastUserPrompt: this.lastUserPrompt,
       goalKind: this.goalKind,
+      complexity: this.complexity,
+      modelTask: this.modelTask,
       invokedSkillIds: [...this.invokedSkillIds],
       brainstormExploreDone: this.brainstormExploreDone,
       planExploreDone: this.planExploreDone,
@@ -428,6 +430,8 @@ export class WorkflowSessionState {
     this.criticalReviewOpen = data.criticalReviewOpen;
     this.lastUserPrompt = data.lastUserPrompt;
     this.goalKind = data.goalKind;
+    this.complexity = data.complexity ?? "medium";
+    this.modelTask = data.modelTask ?? "coding";
     this.invokedSkillIds = [...(data.invokedSkillIds ?? [])];
     this.brainstormExploreDone = data.brainstormExploreDone ?? false;
     this.planExploreDone = data.planExploreDone ?? false;
@@ -449,6 +453,8 @@ export class WorkflowSessionState {
     this.criticalReviewOpen = false;
     this.lastUserPrompt = "";
     this.goalKind = "other";
+    this.complexity = "medium";
+    this.modelTask = "coding";
     this.subagent = false;
     this.compactTimes = [];
     this.invokedSkillIds = [];
@@ -477,6 +483,8 @@ export interface WorkflowSessionPersist {
   criticalReviewOpen: boolean;
   lastUserPrompt: string;
   goalKind: GoalKind;
+  complexity?: TaskComplexity;
+  modelTask?: ModelTaskType;
   invokedSkillIds: string[];
   brainstormExploreDone?: boolean;
   planExploreDone?: boolean;

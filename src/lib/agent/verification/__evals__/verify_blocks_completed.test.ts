@@ -133,7 +133,9 @@ describe("verification evals", () => {
 
     const errors = events.filter((event) => event.type === "error");
     expect(errors.some((event) => event.type === "error" && /empty response/i.test(event.message))).toBe(false);
-    expect(errors.some((event) => event.type === "error" && /TS2322|Required checks failed/i.test(event.message))).toBe(true);
+    expect(errors.some((event) => event.type === "error" && event.message.startsWith("Verification failed"))).toBe(true);
+    expect(errors.some((event) => event.type === "error" && /pre-existing/i.test(event.message))).toBe(true);
+    expect(errors.some((event) => event.type === "error" && /TS2322/i.test(event.message))).toBe(true);
     expect(events.some((event) => event.type === "completed")).toBe(false);
     expect(runtime.getState().status).toBe("failed");
     expect(events.some((event) => event.type === "verification-completed" && event.ok === false)).toBe(true);

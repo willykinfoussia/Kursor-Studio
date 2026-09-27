@@ -8,7 +8,7 @@ Un **run** = un `sendMessage` (retry / resume peuvent réutiliser le même `runI
 
 ## 0. Vue d’ensemble
 
-**Fait as-built.** Chaque `sendMessage` passe par `WorkflowEngine.run` : un seul step `act`, un `runTurn`, ContextEngine 1×, puis `AgentLoop`. `shouldOrchestrate` retourne **toujours** `false` — l’orchestrateur n’est **pas** un driver d’entrée. Les sous-agents `explore` / `implement` / `review` existent via le tool `agent` (SDD), pas via un fork `classifyTask`.
+**Fait as-built.** Chaque `sendMessage` passe par un appel JEV (`classifyTurn`), puis `WorkflowEngine.run` : un seul step `act`, un `runTurn`, ContextEngine 1×, puis `AgentLoop`. `shouldOrchestrate` retourne **toujours** `false` — l’orchestrateur n’est **pas** un driver d’entrée. Les sous-agents `explore` / `implement` / `review` existent via le tool `agent` (SDD). JEV ne recrée pas ce fork : il choisit brainstorming ou boucle directe.
 
 ```mermaid
 flowchart TD
@@ -17,7 +17,8 @@ flowchart TD
   guards -->|non| session[Session + Task + runId]
   session --> hook{user_prompt_submit}
   hook -->|deny| failed[failed]
-  hook -->|allow| engine[WorkflowEngine act]
+  hook -->|allow| jev[classifyTurn JEV]
+  jev --> engine[WorkflowEngine act]
   engine --> turn[runTurn]
   turn --> compact{fenetre pleine?}
   compact -->|oui| cmp[extractif puis LLM-CMP]
@@ -32,7 +33,7 @@ flowchart TD
 
 `WorkflowEngine.run` n’appelle plus `selectWorkflow`, `activeSteps`, `groupSteps`, ni `waitApproval`. Il émet `workflow-started` (`workflowId: "agent-loop"`, `stepIds: ["act"]`), un `runTurn` avec overlay vide, puis `workflow-completed`.
 
-`selectWorkflow` / `activeSteps` / `FEATURE_DEVELOPMENT` / `DEBUG_WORKFLOW` / `formatOverlay` restent dans le module (**code mort** pour le chemin `run()`). `classifyTask` tourne encore et stocke `complexity` sur le contexte — hint de **routing modèle**, pas un fork d’architecture.
+`selectWorkflow` / `activeSteps` / `FEATURE_DEVELOPMENT` / `DEBUG_WORKFLOW` / `formatOverlay` restent dans le module (**code mort** pour le chemin `run()`). La complexité écrite sur le contexte vient du verdict JEV passé à `run`, pas d’une regex.
 
 ### 0.2 AgentOrchestrator — tool `agent`, pas un driver
 
@@ -97,29 +98,15 @@ Le `runId` est alloué **avant** `WorkflowEngine` / `runTurn` pour que `workflow
 
 ## 2. Classification
 
-`classifyTask(goal)` — règles **dans cet ordre** (`src/lib/agent/workflows/classify.ts`) :
+Un seul `ai.evaluate` (modèle `typesafe-ai/jev`, [`turnClassifier.ts`](../../src/lib/agent/workflows/turnClassifier.ts)) classe le prompt **avant** `bindContinuingProjectPlan` et `beginUserTurn`. Questions du même appel : `goalKind`, `complexity`, `reply`, `skipProcess`, `continuation`, `modelTask`. Seuil 0,55. Sous le seuil, ou si `evaluate` manque ou jette : pas d’approbation, pas de skip, pas de suite, `goalKind` `other`, complexité `medium`, `modelTask` `coding`. Aucun repli regex.
 
-| Rang | Condition | Résultat |
-| --- | --- | --- |
-| 1 | goal vide | `simple` |
-| 2 | `oauth` / `authentification` / `authentication` / `architecture` / `multi-tenant` **ou** `migrat…` | `complex` |
-| 3 | (`ajoute` / `add` / `implement` / …) **et** domaine large (`auth`, `login`, `oauth`, `payment`, `billing`, `permission`, `rbac`, `realtime`, `websocket`, `graphql`) | `complex` |
-| 4 | `rename` / `typo` / `variable` | `simple` |
-| 5 | ≤ 6 tokens **et** pas de signal add-feature **et** pas de domaine large | `simple` |
-| 6 | sinon | `medium` |
+Le mode UI écrase ensuite : Ask → `explain`, Debug → `bug`. Sinon `explain` et `bug` du verdict gardent leurs gates. `simple` laisse `goalKind` à `other` (boucle agent, overlay direct, pas de brainstorming). `medium` et `complex` mettent `goalKind` à `build` (brainstorming, HARD-GATE, yes, plan, Build). Un verdict `bug` ou `explain` remplace un build en cours, même si `continuation` est `continue`, sauf `design_yes` et `design_no`. Charger `systematic-debugging` sans `brainstorming`, tant que le design et le plan ne sont pas approuvés et que le mode est Agent, passe le tour en `bug` : le patch minimal est alors autorisé.
 
-`classifyTask` n’oriente **plus** le driver. Il alimente `WorkflowContext.complexity` et les hints `routeModels`. `classifyGoalKind` (build / bug / explain) dans `workflow/sessionState.ts` pilote les **gates** Superpowers (HARD-GATE, debug avant patch). Sur le graphe Pipeline, `workflow-started.goalKind` allume le filet Explain / Bug / Build dans la boîte AgentLoop (pas un fork d’entrée runtime).
+`reply` remplace les listes yes/non : `design_yes` approuve le design, `affirmative` non (`ok`, `d'accord`), `design_no` refuse. `continuation` décide si le cycle d’implémentation reste ouvert et si un plan projet est relié.
 
-Sélection de workflow (`selectWorkflow`) — **indépendante** de la complexité, **non appelée** par `WorkflowEngine.run` :
+`WorkflowEngine.run` reçoit la complexité du verdict. `selectWorkflow` lit `goalKind === "bug"` (catalogue mort, non appelé par `run`). `shouldOrchestrate` reste `false`.
 
-| Condition | Workflow (catalogue mort) |
-| --- | --- |
-| `crash` / `exception` / `stack trace` / `failing test(s)` / `bug` / `reproduce` / `ne marche pas` / `doesn't work` / `panic` | `debug` |
-| sinon | `feature-development` |
-
-`shouldOrchestrate(_complexity)` = `false`.
-
-Routing **modèle** (autre classifier) : `classifyModelTask` dans `TaskClassifier.ts`. Priorité : specialist id → ids d’étapes workflow → texte + complexité. Types : `simple-edit` | `summarization` | `review` | `research` | `planning` | `coding`.
+Routing modèle : `classifyModelTask` garde specialist id et ids d’étapes. Le texte libre utilise `modelTask` du même appel, stocké sur la session. Pas de second appel JEV.
 
 ---
 

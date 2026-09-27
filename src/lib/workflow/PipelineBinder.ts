@@ -1,5 +1,9 @@
 import type { AgentEvent } from "../agent/types";
-import type { ContextSourceId } from "../agent/context/types";
+import type { ContextSliceSummary, ContextSourceId } from "../agent/context/types";
+import { clipPromptText, PROMPT_SOURCE_ORDER } from "../agent/context/assemble";
+import { BUILTIN_SKILLS } from "../agent/skills/parseSkill";
+import { skillRegistry } from "../agent/skills/SkillRegistry";
+import { wrapUsingSuperpowers } from "../agent/workflow/prompts";
 import { LAYOUT_SKIP_EVENT_TYPES, type AgentRunEvent } from "./events";
 import { parseRuntimeToolName } from "../mcp/ids";
 import { applyPhasePrompts, extractPhasePrompts } from "./phasePrompts";
@@ -32,6 +36,8 @@ interface BinderState {
   toolOrder: string[];
   driver: "engine" | "orchestrator" | null;
   activeProcessSkill: string | null;
+  showSuperpowers: boolean;
+  promptSlices: ContextSliceSummary[];
 }
 
 function emptyRun(id: string): AgentRun {
@@ -64,6 +70,8 @@ function cloneIdle(runId: string): BinderState {
     toolOrder: [],
     driver: null,
     activeProcessSkill: null,
+    showSuperpowers: false,
+    promptSlices: [],
   };
 }
 
@@ -144,6 +152,7 @@ export function bindPipeline(events: readonly AgentRunEvent[], activeRun?: Agent
   }
 
   applyPhasePrompts(state.nodes.values(), extractPhasePrompts(events));
+  placePromptIngredients(state);
 
   return {
     run: state.run,
@@ -161,8 +170,7 @@ function fold(state: BinderState, event: AgentRunEvent) {
       state.run.title = payload.title;
       state.run.status = "running";
       state.run.startedAt = state.run.startedAt || event.timestamp;
-      mark(state, PIPELINE_IDS.boot, "completed", event);
-      mark(state, PIPELINE_IDS.user, "completed", event, { title: payload.title });
+      mark(state, PIPELINE_IDS.user, "completed", event, { title: payload.title, content: clipPromptText(payload.title) });
       mark(state, PIPELINE_IDS.task, "running", event, { taskId: payload.taskId, title: payload.title });
       mark(state, PIPELINE_IDS.hook, "running", event);
       break;
@@ -171,6 +179,7 @@ function fold(state: BinderState, event: AgentRunEvent) {
       break;
     case "hook-denied":
       mark(state, PIPELINE_IDS.hook, "failed", event, { message: payload.message, hook: payload.event });
+      markSkipped(state, PIPELINE_IDS.classify);
       mark(state, PIPELINE_IDS.result, "failed", event, { message: payload.message });
       state.run.status = "failed";
       state.run.error = payload.message;
@@ -182,6 +191,24 @@ function fold(state: BinderState, event: AgentRunEvent) {
       if (payload.event === "before_tool") {
         mark(state, PIPELINE_IDS.toolHook, payload.result === "block" ? "failed" : "completed", event, { hook: payload.hook, result: payload.result });
       }
+      break;
+    case "turn-classified":
+      mark(state, PIPELINE_IDS.classify, "completed", event, {
+        goalKind: payload.goalKind,
+        complexity: payload.complexity,
+        reply: payload.reply,
+        skipProcess: payload.skipProcess,
+        continuation: payload.continuation,
+        modelTask: payload.modelTask,
+        content: [
+          `goalKind: ${payload.goalKind}`,
+          `complexity: ${payload.complexity}`,
+          `reply: ${payload.reply}`,
+          `skipProcess: ${payload.skipProcess}`,
+          `continuation: ${payload.continuation}`,
+          `modelTask: ${payload.modelTask}`,
+        ].join("\n"),
+      });
       break;
     case "workflow-started":
       mark(state, PIPELINE_IDS.loop, "running", event, { workflowId: payload.workflowId, goalKind: payload.goalKind });
@@ -211,25 +238,48 @@ function fold(state: BinderState, event: AgentRunEvent) {
       }
       break;
     case "compacted":
-      mark(state, PIPELINE_IDS.compact, "completed", event, { kept: payload.kept, dropped: payload.dropped, summary: payload.summary });
+      mark(state, PIPELINE_IDS.compact, "completed", event, {
+        kept: payload.kept,
+        dropped: payload.dropped,
+        summary: payload.summary,
+        content: clipPromptText(payload.summary),
+      });
       mark(state, PIPELINE_IDS.context, "running", event);
       break;
-    case "context-assembled":
-      mark(state, PIPELINE_IDS.context, "completed", event, { tokensUsed: payload.tokensUsed, slices: payload.slices });
+    case "context-assembled": {
+      const assembled = payload.scope !== "subagent" ? payload.systemPrompt : undefined;
+      mark(state, PIPELINE_IDS.context, "completed", event, {
+        tokensUsed: payload.tokensUsed,
+        slices: payload.slices,
+        ...(assembled ? { content: assembled } : {}),
+      });
       mark(state, PIPELINE_IDS.loop, "running", event);
       for (const id of PIPELINE_CONTEXT_STAGES) mark(state, id, "completed", event);
+      if (assembled) mark(state, PIPELINE_IDS.ctxAssemble, "completed", event, { content: assembled });
       if (state.nodes.get(PIPELINE_IDS.compact)?.status === "idle") markSkipped(state, PIPELINE_IDS.compact);
       applyContextSlices(state, event, payload);
+      if (payload.scope !== "subagent") {
+        state.showSuperpowers = true;
+        state.promptSlices = payload.slices ?? [];
+        ensureSuperpowers(state, event);
+      }
       break;
+    }
     case "skill-check":
       mark(state, PIPELINE_IDS.skillCheck, "completed", event, { considered: payload.considered, noneApply: payload.noneApply });
       mark(state, PIPELINE_IDS.loop, "running", event);
       break;
     case "skill-selected":
     case "skill-loaded": {
-      mark(state, PIPELINE_IDS.skill, "completed", event, { skillId: payload.skillId, name: payload.name });
+      const body = skillInstructions(payload.skillId);
+      const skillMeta = {
+        skillId: payload.skillId,
+        name: payload.name,
+        ...(body ? { content: clipPromptText(body) } : {}),
+      };
+      mark(state, PIPELINE_IDS.skill, "completed", event, skillMeta);
       mark(state, PIPELINE_IDS.skillCheck, "completed", event);
-      lightProcessSkill(state, payload.skillId, event, { skillId: payload.skillId, name: payload.name });
+      lightProcessSkill(state, payload.skillId, event, skillMeta);
       break;
     }
     case "design-gate":
@@ -330,8 +380,7 @@ function fold(state: BinderState, event: AgentRunEvent) {
       }
       break;
     case "started":
-      mark(state, PIPELINE_IDS.boot, "completed", event);
-      mark(state, PIPELINE_IDS.user, "completed", event, { messageId: payload.userMessage.id, content: payload.userMessage.content.slice(0, 80) });
+      mark(state, PIPELINE_IDS.user, "completed", event, { messageId: payload.userMessage.id, content: clipPromptText(payload.userMessage.content) });
       completeIfActive(state, PIPELINE_IDS.hook, event);
       mark(state, PIPELINE_IDS.router, "completed", event, { model: payload.model });
       mark(state, PIPELINE_IDS.model, "running", event, { model: payload.model });
@@ -459,6 +508,89 @@ function markSpecialistLoop(
   mark(state, PIPELINE_IDS.specialistPart(agentId, "perm"), status === "running" ? "running" : status, event);
   mark(state, PIPELINE_IDS.specialistPart(agentId, "tools"), status, event);
   if (status !== "running") mark(state, PIPELINE_IDS.specialistPart(agentId, "verify"), status, event);
+}
+
+function skillInstructions(skillId: string): string {
+  return skillRegistry.get(skillId)?.instructions?.trim()
+    || BUILTIN_SKILLS.find((skill) => skill.id === skillId)?.instructions?.trim()
+    || "";
+}
+
+function ensureSuperpowers(state: BinderState, event: AgentRunEvent) {
+  const content = clipPromptText(wrapUsingSuperpowers());
+  const existing = state.nodes.get(PIPELINE_IDS.boot);
+  if (!existing) {
+    state.nodes.set(PIPELINE_IDS.boot, {
+      id: PIPELINE_IDS.boot,
+      runId: event.runId,
+      type: "skill",
+      label: "using-superpowers",
+      status: "completed",
+      timestamp: event.timestamp,
+      startedAt: event.timestamp,
+      finishedAt: event.timestamp,
+      sequence: event.sequence,
+      metadata: {
+        role: "Injected at the front of the parent system prompt.",
+        kind: "core",
+        pipeline: true,
+        skillId: "using-superpowers",
+        content,
+        position: { x: 0, y: 0 },
+      },
+    });
+    return;
+  }
+  mark(state, PIPELINE_IDS.boot, "completed", event, { skillId: "using-superpowers", content });
+}
+
+function sliceContent(slices: readonly ContextSliceSummary[], source: ContextSourceId): string {
+  const parts = slices
+    .filter((slice) => slice.source === source && slice.included !== false && slice.text?.trim())
+    .map((slice) => slice.text?.trim() ?? "");
+  return clipPromptText(parts.join("\n\n"));
+}
+
+function dropEdge(state: BinderState, source: string, target: string) {
+  state.edges = state.edges.filter((edge) => !(edge.source === source && edge.target === target));
+}
+
+function addSequence(state: BinderState, source: string, target: string) {
+  const id = `sequence:${source}->${target}`;
+  if (state.edges.some((edge) => edge.id === id)) return;
+  state.edges.push({
+    id,
+    runId: state.run.id,
+    source,
+    target,
+    type: "sequence",
+    evidenceLevel: "observed",
+  });
+}
+
+function placePromptIngredients(state: BinderState) {
+  const band: string[] = [];
+  if (state.showSuperpowers && state.nodes.has(PIPELINE_IDS.boot)) band.push(PIPELINE_IDS.boot);
+  const included = new Set(state.promptSlices.filter((slice) => slice.included !== false).map((slice) => slice.source));
+  for (const source of PROMPT_SOURCE_ORDER) {
+    if (!included.has(source)) continue;
+    const id = PIPELINE_IDS.slice(source);
+    const node = state.nodes.get(id);
+    if (!node || node.status === "idle" || node.status === "skipped") continue;
+    delete node.parentId;
+    const content = sliceContent(state.promptSlices, source);
+    if (content) node.metadata = { ...node.metadata, content, source };
+    dropEdge(state, id, PIPELINE_IDS.ctxRank);
+    band.push(id);
+  }
+  if (band.length === 0) return;
+  dropEdge(state, PIPELINE_IDS.user, PIPELINE_IDS.task);
+  let previous = PIPELINE_IDS.user;
+  for (const id of band) {
+    addSequence(state, previous, id);
+    previous = id;
+  }
+  addSequence(state, previous, PIPELINE_IDS.task);
 }
 
 function applyContextSlices(state: BinderState, event: AgentRunEvent, payload: Extract<AgentEvent, { type: "context-assembled" }>) {
@@ -739,7 +871,7 @@ function addFallbackEdge(state: BinderState, event: AgentRunEvent) {
 
 function completeSpine(state: BinderState, event: AgentRunEvent) {
   const ids = [
-    PIPELINE_IDS.boot, PIPELINE_IDS.user, PIPELINE_IDS.task, PIPELINE_IDS.hook, PIPELINE_IDS.skillCheck,
+    PIPELINE_IDS.user, PIPELINE_IDS.task, PIPELINE_IDS.hook, PIPELINE_IDS.classify, PIPELINE_IDS.skillCheck,
     PIPELINE_IDS.loop, PIPELINE_IDS.compact, PIPELINE_IDS.context,
     PIPELINE_IDS.router, PIPELINE_IDS.model, PIPELINE_IDS.toolChoice, PIPELINE_IDS.toolHook, PIPELINE_IDS.tools,
     PIPELINE_IDS.mcp, PIPELINE_IDS.toolResults, PIPELINE_IDS.permissions, PIPELINE_IDS.verification,
@@ -753,6 +885,7 @@ function completeSpine(state: BinderState, event: AgentRunEvent) {
     if (node.id === PIPELINE_IDS.mcp && node.status === "idle") markSkipped(state, node.id);
     if (node.type === "mcp_server" && node.status === "idle") markSkipped(state, node.id);
     if (node.id === PIPELINE_IDS.compact && node.status === "idle") markSkipped(state, node.id);
+    if (node.id === PIPELINE_IDS.classify && node.status === "idle") markSkipped(state, node.id);
     if (node.id === PIPELINE_IDS.recovery && node.status === "idle") markSkipped(state, node.id);
     if (node.id === PIPELINE_IDS.permissions && node.status === "idle") markSkipped(state, node.id);
     if (node.id === PIPELINE_IDS.toolResults && node.status === "idle") markSkipped(state, node.id);

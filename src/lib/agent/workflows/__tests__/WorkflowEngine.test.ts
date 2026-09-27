@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   WorkflowEngine,
   activeSteps,
-  classifyTask,
   isDebugGoal,
   selectWorkflow,
 } from "../index";
 
 describe("TaskComplexity", () => {
-  it("still classifies text for model routing hints, not as a runtime fork", () => {
-    expect(classifyTask("renomme cette variable")).toBe("simple");
-    expect(classifyTask("ajoute l'authentification OAuth")).toBe("complex");
+  it("selects the debug catalogue from a bug goal kind", () => {
+    expect(isDebugGoal("bug")).toBe(true);
+    expect(isDebugGoal("build")).toBe(false);
+    expect(selectWorkflow("bug").id).toBe("debug");
+    expect(selectWorkflow("other").id).toBe("feature-development");
   });
 });
 
@@ -30,14 +31,14 @@ describe("WorkflowEngine", () => {
 
     expect(turns).toEqual([["act"]]);
     expect(context.workflowId).toBe("agent-loop");
-    expect(context.complexity).toBe("complex");
+    expect(context.complexity).toBe("medium");
     expect(context.status).toBe("completed");
   });
 
   it("does not require plan approval or debug overlays at runtime", async () => {
     const goal = "the app crash on the failing test";
-    expect(isDebugGoal(goal)).toBe(true);
-    expect(selectWorkflow(goal).id).toBe("debug");
+    expect(isDebugGoal("bug")).toBe(true);
+    expect(selectWorkflow("bug").id).toBe("debug");
     const engine = new WorkflowEngine();
     const context = await engine.run(goal, {
       async runTurn() {
@@ -49,7 +50,7 @@ describe("WorkflowEngine", () => {
     });
     expect(context.workflowId).toBe("agent-loop");
     expect(context.status).toBe("completed");
-    expect(activeSteps(selectWorkflow("add a readme"), "medium").length).toBeGreaterThan(0);
+    expect(activeSteps(selectWorkflow("other"), "medium").length).toBeGreaterThan(0);
   });
 
   it("forwards optional goalKind and skipProcess on workflow-started", async () => {
@@ -66,7 +67,7 @@ describe("WorkflowEngine", () => {
       async waitApproval() {
         return "allow";
       },
-    }, { goalKind: "build", skipProcess: true });
+    }, { goalKind: "build", skipProcess: true, complexity: "complex" });
     expect(events).toHaveLength(1);
     expect(events[0]?.goalKind).toBe("build");
     expect(events[0]?.skipProcess).toBe(true);

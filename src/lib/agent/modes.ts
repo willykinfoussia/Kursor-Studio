@@ -60,6 +60,7 @@ export function planToAgentBlocked(
 
 export type ModeOverlaySession = {
   goalKind?: string;
+  complexity?: "simple" | "medium" | "complex";
   designApproved?: unknown;
   planPath?: string | null;
   planApproved?: boolean;
@@ -111,6 +112,12 @@ const PLAN_DEFAULT = `${PLAN_READ_ONLY}
 Explore the codebase, ask clarifying questions with ask_user_question when needed, then you MUST call load_skill writing-plans, then load_skill subagent-driven-planning and dispatch at least two explore subagents in the same response, and finish by calling create_plan with a concrete implementation plan: a name, an overview, and a detailed markdown body (at least 6000 characters besides mermaid) with Problem, Architecture, KEEP/EXTEND impact, mermaid diagrams, short contract excerpts, and a section per todo with files and how to verify, one todo per implementable task. Outline-only plans are rejected. Do not dump full implementations.
 ${PLAN_FINISH_CREATE}`;
 
+const AGENT_DIRECT = `This request is one concrete action. Do it directly.
+Do not load the brainstorming skill. Do not call create_plan. Do not wait for a design approval.`;
+
+const AGENT_BUG = `This is a bug. Load the systematic-debugging skill first.
+Find the root cause, then apply the smallest patch. Do not load the brainstorming skill. Do not wait for a design approval.`;
+
 const AGENT_BRAINSTORM = `This is a build. Stay in Agent mode for brainstorming.
 Load the brainstorming skill first. Then load_skill subagent-driven-brainstorming and dispatch at least two explore subagents in the same response before presenting a design.
 Inspect the project, ask clarifying questions, and present a design.
@@ -156,6 +163,7 @@ Load the systematic-debugging skill first. Reproduce with run_command if needed.
 Do not patch files until you have a root cause. Then apply a minimal fix and verify.`;
   }
   if (mode === "agent") {
+    if (session?.goalKind === "bug") return AGENT_BUG;
     if (session?.planApproved && session.planTodosComplete) return agentVerifyPlan(session.planPath);
     if (session?.planApproved) return AGENT_EXECUTE_PLAN;
     if (staleApprovedDiskPlan(session)) {
@@ -165,6 +173,7 @@ Do not patch files until you have a root cause. Then apply a minimal fix and ver
       return AGENT_STALE_DISK_PLAN;
     }
     if (session?.goalKind === "build" && !session.designApproved) return AGENT_BRAINSTORM;
+    if (session?.goalKind === "other" && session.complexity === "simple") return AGENT_DIRECT;
     return "";
   }
   if (session) {

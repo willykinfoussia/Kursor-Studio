@@ -17,6 +17,8 @@ description: Use when about to claim work is complete, fixed, or passing, before
 NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 ```
 
+A failing lint, typecheck, build, or test blocks `finish_development_branch` even when the file looks untouched. Do not call that failure pre-existing, unrelated, or already broken. Fix every failing check, then finish only after the report is green.
+
 If you haven't run the verification command in this message, you cannot claim it passes.
 
 ## The Gate Function

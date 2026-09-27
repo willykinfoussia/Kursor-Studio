@@ -1,4 +1,6 @@
-import { shouldCollapseIntoToolGroup } from "./toolGroups";
+import { clipPromptText } from "../agent/context/assemble";
+import { BUILTIN_SKILLS } from "../agent/skills/parseSkill";
+import { skillRegistry } from "../agent/skills/SkillRegistry";
 import type { AgentEvent } from "../agent/types";
 import type { ContextSliceSummary } from "../agent/context/types";
 import { LAYOUT_SKIP_EVENT_TYPES, type AgentRunEvent } from "./events";
@@ -23,6 +25,7 @@ import {
 } from "./GraphSelection";
 import { phaseFromWorkflowStep } from "./phases";
 import { nodeTypeForTool, stringifyPreview, toolFileLine, toolFilePath } from "./toolKind";
+import { shouldCollapseIntoToolGroup } from "./toolGroups";
 import { parseRuntimeToolName } from "../mcp/ids";
 import { persistMcpUsage } from "../mcp/usage";
 import { capabilityIdFromRuntimeTool, mcpServerCapabilityId, skillCapabilityId } from "../capabilities/ids";
@@ -55,6 +58,11 @@ interface ProjectorState {
   lastSequence: number;
   structural: boolean;
   groupableBuffer: string[];
+  userPrompt: string;
+  currentTurnId: string | null;
+  turnBand: string[];
+  turnResults: string[];
+  modelTurns: number;
 }
 
 function emptyRun(id: string, timestamp: number): AgentRun {
@@ -106,6 +114,11 @@ export class RunGraphProjector {
       lastSequence: 0,
       structural: false,
       groupableBuffer: [],
+      userPrompt: "",
+      currentTurnId: null,
+      turnBand: [],
+      turnResults: [],
+      modelTurns: 0,
     };
   }
 
@@ -154,6 +167,7 @@ export class RunGraphProjector {
         this.onContext(event, payload);
         break;
       case "skill-selected":
+      case "skill-loaded":
         this.onSkillSelected(event, payload);
         break;
       case "tool-started":
@@ -233,6 +247,10 @@ export class RunGraphProjector {
         break;
       case "step-started":
         this.patchRun({ totalSteps: this.state.run.totalSteps + 1, status: "running" });
+        if (payload.kind === "model") this.onModelStep(event, payload);
+        break;
+      case "assistant-message":
+        this.onAssistantMessage(event, payload);
         break;
       case "step-finished":
         break;
@@ -279,6 +297,7 @@ export class RunGraphProjector {
       startedAt: this.state.run.startedAt || event.timestamp,
       title: this.state.run.title ?? payload.userMessage.content.slice(0, 80),
     });
+    this.state.userPrompt = payload.userMessage.content;
     const promptId = nodeIdForPrompt(payload.userMessage.id);
     if (!this.state.nodes.has(promptId)) {
       this.upsertNode({
@@ -363,7 +382,7 @@ export class RunGraphProjector {
       startedAt: event.timestamp,
       finishedAt: event.timestamp,
       phase: this.state.currentPhase,
-      metadata: { tokensUsed: payload.tokensUsed, trace: payload.trace },
+      metadata: { tokensUsed: payload.tokensUsed, trace: payload.trace, ...(payload.systemPrompt ? { content: payload.systemPrompt } : {}) },
     });
     this.connect(this.state.lastSpineId, contextId, "sequence", event, "observed");
     const childIds: string[] = [];
@@ -413,8 +432,57 @@ export class RunGraphProjector {
     this.state.structural = true;
   }
 
-  private onSkillSelected(event: AgentRunEvent, payload: Extract<AgentEvent, { type: "skill-selected" }>) {
+  private onModelStep(event: AgentRunEvent, payload: Extract<AgentEvent, { type: "step-started" }>) {
+    const id = `turn:${payload.stepId}`;
+    const input = this.state.modelTurns === 0 ? this.state.userPrompt : this.state.turnResults.join("\n\n");
+    this.upsertNode({
+      id,
+      runId: event.runId,
+      type: "agent",
+      label: `Agent ${payload.index + 1}`,
+      status: "running",
+      timestamp: event.timestamp,
+      startedAt: event.timestamp,
+      phase: this.state.currentPhase,
+      metadata: {
+        stepId: payload.stepId,
+        ...(input ? { inputPrompt: clipPromptText(input), inputRole: this.state.modelTurns === 0 ? "user" : "tool" } : {}),
+      },
+    });
+    if (this.state.turnBand.length > 0) {
+      for (const source of this.state.turnBand) this.connect(source, id, "sequence", event, "observed");
+      this.state.lastSpineId = id;
+      this.state.turnBand = [];
+    } else {
+      this.sequenceTo(id, event);
+    }
+    this.state.turnResults = [];
+    this.state.currentTurnId = id;
+    this.state.modelTurns += 1;
+    this.state.structural = true;
+  }
+
+  private onAssistantMessage(event: AgentRunEvent, payload: Extract<AgentEvent, { type: "assistant-message" }>) {
+    const id = this.state.currentTurnId;
+    if (!id || !payload.text.trim()) return;
+    const previous = this.state.nodes.get(id)?.metadata?.outputPrompt;
+    const text = clipPromptText(typeof previous === "string" && previous ? `${previous}\n\n${payload.text}` : payload.text);
+    this.patchNode(id, {
+      status: "completed",
+      finishedAt: event.timestamp,
+      metadata: {
+        ...(this.state.nodes.get(id)?.metadata ?? {}),
+        outputPrompt: text,
+        outputRole: "agent",
+      },
+    });
+  }
+
+  private onSkillSelected(event: AgentRunEvent, payload: Extract<AgentEvent, { type: "skill-selected" | "skill-loaded" }>) {
     const id = payload.skillId.includes(":") ? payload.skillId : nodeIdForSlice("skill", payload.skillId);
+    const body = skillRegistry.get(payload.skillId)?.instructions?.trim()
+      || BUILTIN_SKILLS.find((skill) => skill.id === payload.skillId)?.instructions?.trim()
+      || "";
     this.upsertNode({
       id,
       runId: event.runId,
@@ -427,14 +495,20 @@ export class RunGraphProjector {
       phase: this.state.currentPhase,
       metadata: {
         skillId: payload.skillId,
-        reason: payload.reason,
-        version: payload.version,
+        reason: "reason" in payload ? payload.reason : undefined,
+        version: "version" in payload ? payload.version : undefined,
+        ...(body ? { content: clipPromptText(body) } : {}),
         evidenceLevel: "observed",
         capabilityId: skillCapabilityId("builtin", payload.skillId),
         capabilityType: "skill",
         usageInstanceId: id,
       },
     });
+    if (this.state.currentTurnId) {
+      this.connect(this.state.currentTurnId, id, "sequence", event, "observed");
+      this.state.turnBand.push(id);
+      return;
+    }
     this.connect(id, this.state.lastSpineId, "input", event, "observed");
     this.state.pendingContextIds.push(id);
   }
@@ -486,6 +560,9 @@ export class RunGraphProjector {
     if (this.state.lastErrorId) {
       this.connect(this.state.lastErrorId, id, "recovery", event, "observed");
       this.state.lastErrorId = null;
+    } else if (this.state.currentTurnId) {
+      this.connect(this.state.currentTurnId, id, "sequence", event, "observed");
+      this.state.turnBand.push(id);
     } else if (!serverNodeId) {
       this.sequenceTo(id, event);
     }
@@ -509,8 +586,13 @@ export class RunGraphProjector {
         output: payload.output,
         outputChars: outputChars(payload.output),
         outputPreview: stringifyPreview(payload.output),
+        content: clipPromptText(typeof payload.output === "string" ? payload.output : stringifyPreview(payload.output, 4000)),
       },
     });
+    const resultText = this.state.nodes.get(id)?.metadata?.content;
+    if (typeof resultText === "string" && resultText && this.state.currentTurnId) {
+      this.state.turnResults.push(resultText);
+    }
     const mcpServerId = this.state.nodes.get(id)?.metadata?.mcpServerId;
     const mcpToolName = this.state.nodes.get(id)?.metadata?.mcpToolName;
     if (typeof mcpServerId === "string" && typeof mcpToolName === "string") {

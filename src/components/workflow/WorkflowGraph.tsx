@@ -111,9 +111,10 @@ export function WorkflowGraph({
 
   const rfNodes: Node[] = useMemo(() => visibleNodes.map((node) => {
     const placed = positions.get(node.id);
-    const nested = Boolean(node.parentId)
+    const nest = canvasMode !== "trace"
+      && Boolean(node.parentId)
       && visibleNodes.some((item) => item.id === node.parentId);
-    const isGroup = visibleNodes.some((item) => item.parentId === node.id);
+    const isGroup = canvasMode !== "trace" && visibleNodes.some((item) => item.parentId === node.id);
     return {
       id: node.id,
       type: rfNodeType(node.type),
@@ -121,8 +122,8 @@ export function WorkflowGraph({
       data: { node },
       selected: node.id === selectedNodeId,
       draggable: false,
-      parentId: nested ? node.parentId : undefined,
-      extent: nested ? "parent" : undefined,
+      parentId: nest ? node.parentId : undefined,
+      extent: nest ? "parent" : undefined,
       style: isGroup && placed ? { width: placed.width, height: placed.height } : undefined,
       zIndex: isGroup ? 0 : 1,
       className: collapsedGroups[node.id] ? "collapsed" : undefined,

@@ -108,8 +108,9 @@ button { color: inherit; }
 .tabs { height: 36px; display: flex; align-items: stretch; overflow-x: auto; background: #0c0f15; border-bottom: 1px solid var(--border); }
 .editor-tab { min-width: 120px; max-width: 190px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border: 0; border-right: 1px solid var(--border); background: #10131b; color: #838b9b; font-size: 11px; cursor: pointer; }
 .editor-tab.active { color: #e5e8ef; background: #131720; box-shadow: inset 0 2px var(--accent); }
-.tab-name { overflow: hidden; text-overflow: ellipsis; flex: 1; text-align: left; }
-.tab-close { opacity: 0; }
+.editor-tab > svg { flex: none; }
+.tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; text-align: left; }
+.tab-close { opacity: 0; flex: none; }
 .editor-tab:hover .tab-close, .editor-tab.active .tab-close { opacity: 1; }
 .tabs-actions { margin-left: auto; display: flex; align-items: center; padding: 0 6px; }
 .breadcrumb { height: 28px; display: flex; align-items: center; gap: 4px; padding: 0 13px; color: #677082; font-size: 10px; border-bottom: 1px solid #181d27; }

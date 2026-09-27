@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { ChevronRight, Copy, ExternalLink, FileCode2, FileJson, Files, FileText, FolderOpen, ListTodo, Save, X } from "lucide-react";
 import { configureMonaco } from "../../lib/monaco/setup";
-import { languageFromPath } from "../../lib/filesystem/languageFromPath";
+import { isMarkdownDocumentPath, languageFromPath } from "../../lib/filesystem/languageFromPath";
 import { isPlanFilePath } from "../../lib/agent/plans/planFile";
 import { isMarkdownSpecFile } from "../../lib/graph/classify";
 import { projectApi } from "../../lib/tauri/projectApi";
@@ -12,6 +12,7 @@ import { useFileExplorerStore } from "../../stores/fileExplorerStore";
 import { useReviewStore } from "../../stores/reviewStore";
 import { useUiStore } from "../../stores/uiStore";
 import { IconButton } from "../ui/Controls";
+import { MarkdownPreviewView } from "./MarkdownPreviewView";
 import { PlanEditorView } from "../plans/PlanEditorView";
 import { SpecEditorView } from "../specs/SpecEditorView";
 
@@ -166,6 +167,8 @@ export function EditorWorkspace() {
             <PlanEditorView path={active.path} />
           ) : isMarkdownSpecFile(active.path) ? (
             <SpecEditorView path={active.path} />
+          ) : isMarkdownDocumentPath(active.path) ? (
+            <MarkdownPreviewView path={active.path} />
           ) : (
             <div className="monaco-host">
               <Editor

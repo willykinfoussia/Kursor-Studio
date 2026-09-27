@@ -2,7 +2,7 @@ import type { AgentEvent } from "../types";
 import type { GoalKind } from "../workflow/sessionState";
 import { FEATURE_DEVELOPMENT } from "./builtin/feature-development";
 import { DEBUG_WORKFLOW } from "./builtin/debug";
-import { classifyTask, isDebugGoal } from "./classify";
+import { isDebugGoal } from "./classify";
 import {
   COMPLEXITY_RANK,
   type TaskComplexity,
@@ -22,8 +22,8 @@ export interface WorkflowEngineOptions {
   id?: () => string;
 }
 
-export function selectWorkflow(goal: string): Workflow {
-  return isDebugGoal(goal) ? DEBUG_WORKFLOW : FEATURE_DEVELOPMENT;
+export function selectWorkflow(goalKind: GoalKind = "other"): Workflow {
+  return isDebugGoal(goalKind) ? DEBUG_WORKFLOW : FEATURE_DEVELOPMENT;
 }
 
 export function activeSteps(workflow: Workflow, complexity: TaskComplexity): WorkflowStep[] {
@@ -51,17 +51,13 @@ export function groupSteps(steps: readonly WorkflowStep[], complexity: TaskCompl
 export class WorkflowEngine {
   constructor(private readonly options: WorkflowEngineOptions = {}) {}
 
-  classify(goal: string) {
-    return classifyTask(goal);
+  select(goalKind: GoalKind = "other") {
+    return selectWorkflow(goalKind);
   }
 
-  select(goal: string) {
-    return selectWorkflow(goal);
-  }
-
-  async run(goal: string, runner: TurnRunner, gates?: { goalKind?: GoalKind; skipProcess?: boolean }): Promise<WorkflowContext> {
+  async run(goal: string, runner: TurnRunner, gates?: { goalKind?: GoalKind; skipProcess?: boolean; complexity?: TaskComplexity }): Promise<WorkflowContext> {
     const runId = this.options.id?.() ?? crypto.randomUUID();
-    const complexity = classifyTask(goal);
+    const complexity = gates?.complexity ?? "medium";
     const step: WorkflowStep = {
       id: "act",
       title: "Act",

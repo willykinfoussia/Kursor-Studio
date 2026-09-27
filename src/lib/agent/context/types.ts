@@ -83,6 +83,7 @@ export interface ContextSliceSummary {
   source: ContextSourceId;
   tokens: number;
   included?: boolean;
+  text?: string;
   meta?: Record<string, string>;
 }
 

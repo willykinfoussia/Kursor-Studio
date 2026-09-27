@@ -17,13 +17,13 @@ function model(id: string, name = id): AIModel {
 }
 
 describe("TaskClassifier", () => {
-  it("maps a rename to simple-edit", () => {
-    expect(classifyModelTask("renomme cette variable")).toBe("simple-edit");
+  it("uses the JEV modelTask hint for free text", () => {
+    expect(classifyModelTask("renomme cette variable", { modelTask: "simple-edit" })).toBe("simple-edit");
+    expect(classifyModelTask("ajoute l'authentification OAuth", { modelTask: "planning" })).toBe("planning");
   });
 
-  it("maps OAuth and plan wording to planning", () => {
-    expect(classifyModelTask("ajoute l'authentification OAuth")).toBe("planning");
-    expect(classifyModelTask("plan the architecture for billing")).toBe("planning");
+  it("defaults to coding when JEV did not supply a model task", () => {
+    expect(classifyModelTask("renomme cette variable")).toBe("coding");
   });
 
   it("lets a research specialist hint win over the goal text", () => {
@@ -61,6 +61,7 @@ describe("ModelPolicy", () => {
     const { models } = routeModels({
       goal: "plan the architecture",
       ordered: [laguna, ling, deepseek],
+      hints: { modelTask: "planning" },
       pin: laguna.id,
     });
     expect(models[0]?.id).toBe(deepseek.id);

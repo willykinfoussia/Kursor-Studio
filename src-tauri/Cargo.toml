@@ -1,6 +1,6 @@
 [package]
 name = "kursor"
-version = "0.6.0"
+version = "0.6.1"
 description = "A secure agentic desktop IDE"
 authors = ["Kursor"]
 edition = "2021"

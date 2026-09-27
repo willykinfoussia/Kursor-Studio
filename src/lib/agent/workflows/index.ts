@@ -1,4 +1,4 @@
-export { classifyTask, isDebugGoal } from "./classify";
+export { isDebugGoal } from "./classify";
 export { FEATURE_DEVELOPMENT } from "./builtin/feature-development";
 export { DEBUG_WORKFLOW } from "./builtin/debug";
 export {

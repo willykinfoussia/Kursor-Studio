@@ -63,6 +63,42 @@ export function WorkflowDetails({
   );
 }
 
+function NodeText({ meta }: { meta: Record<string, unknown> }) {
+  const content = typeof meta.content === "string" ? meta.content : "";
+  const input = typeof meta.inputPrompt === "string" ? meta.inputPrompt : "";
+  const output = typeof meta.outputPrompt === "string" ? meta.outputPrompt : "";
+  const summary = typeof meta.summary === "string" ? meta.summary : "";
+  const primary = content || (!input ? output || summary : "");
+  const showOutput = Boolean(output) && output !== primary && output !== content;
+  if (!primary && !input && !showOutput) return null;
+  return (
+    <section className="wf-prompt-io">
+      <h3>Texte</h3>
+      {primary && (
+        <div className="wf-prompt-block">
+          <pre className="wf-prompt-text">{primary}</pre>
+        </div>
+      )}
+      {input && (
+        <div className="wf-prompt-block">
+          <div className="wf-prompt-label">
+            Entrée{typeof meta.inputRole === "string" ? ` · ${meta.inputRole}` : ""}
+          </div>
+          <pre className="wf-prompt-text">{input}</pre>
+        </div>
+      )}
+      {showOutput && (
+        <div className="wf-prompt-block">
+          <div className="wf-prompt-label">
+            Sortie{typeof meta.outputRole === "string" ? ` · ${meta.outputRole}` : ""}
+          </div>
+          <pre className="wf-prompt-text">{output}</pre>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function NodeBody({ node, inbound, graphNodes }: { node: AgentGraphNode; inbound: AgentGraphNode[]; graphNodes: AgentGraphNode[] }) {
   const duration = formatDuration(node.startedAt, node.finishedAt);
   const meta = node.metadata ?? {};
@@ -77,6 +113,7 @@ function NodeBody({ node, inbound, graphNodes }: { node: AgentGraphNode; inbound
         <div className="wf-details-kicker">{node.type.replace(/_/g, " ")}</div>
         <h2>{node.label}</h2>
       </header>
+      <NodeText meta={meta} />
       {typeof meta.role === "string" && <p className="wf-role">{meta.role}</p>}
       {canDrill && (
         <p className="wf-muted">Double-click the node, or Enter, to open this graph.</p>
@@ -99,27 +136,6 @@ function NodeBody({ node, inbound, graphNodes }: { node: AgentGraphNode; inbound
         )}
         {typeof meta.skillId === "string" && <div><dt>Skill</dt><dd>{meta.skillId}</dd></div>}
       </dl>
-      {(typeof meta.inputPrompt === "string" || typeof meta.outputPrompt === "string") && (
-        <section className="wf-prompt-io">
-          <h3>Prompts</h3>
-          {typeof meta.inputPrompt === "string" && (
-            <div className="wf-prompt-block">
-              <div className="wf-prompt-label">
-                Entrée{typeof meta.inputRole === "string" ? ` · ${meta.inputRole}` : ""}
-              </div>
-              <pre className="wf-prompt-text">{meta.inputPrompt}</pre>
-            </div>
-          )}
-          {typeof meta.outputPrompt === "string" && (
-            <div className="wf-prompt-block">
-              <div className="wf-prompt-label">
-                Sortie{typeof meta.outputRole === "string" ? ` · ${meta.outputRole}` : ""}
-              </div>
-              <pre className="wf-prompt-text">{meta.outputPrompt}</pre>
-            </div>
-          )}
-        </section>
-      )}
       {isFiletBranch(node) && (
         <section>
           <h3>Filet</h3>

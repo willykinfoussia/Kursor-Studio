@@ -1,4 +1,4 @@
-import { isDesignApprovalReply } from "./approvalLanguage";
+import type { TurnReply } from "../workflows/turnClassifier";
 
 export interface QuestionChoice {
   id: string;
@@ -6,7 +6,6 @@ export interface QuestionChoice {
   description?: string;
 }
 
-const NO_REPLY = /^(?:no|non|deny)[.!]*$/i;
 const ASK_USER_KEYS = new Set(["prompt", "options", "kind"]);
 const EMBEDDED_OPTIONS_MARKUP = /<\/?\s*<?\s*(?:arg_key|arg_value|parameter)\b/i;
 
@@ -119,15 +118,6 @@ export function questionChoiceLabels(choices: readonly QuestionChoice[]): string
   return choices.map((choice) => choice.label);
 }
 
-export function isYesNoQuestionOptions(choices: readonly QuestionChoice[]): boolean {
-  if (choices.length === 0) return true;
-  return choices.every((choice) => {
-    const label = choice.label.trim();
-    const id = choice.id.trim();
-    return isDesignApprovalReply(label) || isDesignApprovalReply(id) || NO_REPLY.test(label) || NO_REPLY.test(id);
-  });
-}
-
 export function matchedQuestionChoice(
   choices: readonly QuestionChoice[],
   selected: string,
@@ -137,20 +127,14 @@ export function matchedQuestionChoice(
   return choices.find((choice) => choice.id === needle || choice.label === needle);
 }
 
-function choiceIsDesignYes(choice: QuestionChoice): boolean {
-  return isDesignApprovalReply(choice.label) || isDesignApprovalReply(choice.id);
-}
-
 export function shouldApproveDesignFromQuestion(
   kind: string | undefined,
   choices: readonly QuestionChoice[],
   selected: string,
+  reply: TurnReply,
 ): boolean {
-  if (kind !== "design") return false;
-  const choice = matchedQuestionChoice(choices, selected);
-  if (choice) return choiceIsDesignYes(choice);
-  if (isYesNoQuestionOptions(choices)) return isDesignApprovalReply(selected);
-  return false;
+  if (kind !== "design" || reply !== "design_yes") return false;
+  return Boolean(matchedQuestionChoice(choices, selected));
 }
 
 export function isUserQuestionStep(stepId: string | undefined): boolean {

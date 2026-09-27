@@ -25,7 +25,6 @@ import { PlanProgressDock } from "./PlanProgressDock";
 import { NewActivityButton } from "./scrolling/NewActivityButton";
 import { useAutoScroll } from "./scrolling/useAutoScroll";
 import { modeNoticeText } from "../../lib/agent/modes";
-import { isAffirmativeReply } from "../../lib/agent/workflow/approvalLanguage";
 import { isUserQuestionStep } from "../../lib/agent/workflow/questionOptions";
 import { buildPlan, isPlanBuildable, latestBuildablePlanId } from "../../lib/agent/plans/buildPlan";
 import { usePlanStore } from "../../stores/planStore";
@@ -317,7 +316,7 @@ export function AgentPanel() {
           highlightedItemId={highlightedItemId}
           onAnswerQuestion={(id, selected) => {
             useAgentStore.getState().dequeuePendingApproval(id);
-            runtime.resolveUserQuestion(id, selected, isAffirmativeReply(selected));
+            void runtime.resolveUserQuestion(id, selected);
           }}
         />
         </div>
@@ -340,8 +339,7 @@ export function AgentPanel() {
           onRejectPlan={(id) => resolveWorkflow(id, "deny")}
           onSelectChoice={(id, selected) => {
             useAgentStore.getState().dequeuePendingApproval(id);
-            const allow = isAffirmativeReply(selected);
-            runtime.resolveUserQuestion(id, selected, allow);
+            void runtime.resolveUserQuestion(id, selected);
           }}
           onStop={hideComposer ? () => runtime.cancel() : undefined}
         />

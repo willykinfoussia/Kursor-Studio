@@ -5,6 +5,7 @@ export function SystemNotice({
   kind,
   text,
   recovery,
+  retryOnly,
   onRetry,
   onContinue,
   onRollback,
@@ -12,6 +13,7 @@ export function SystemNotice({
   kind: SystemNoticeKind;
   text: string;
   recovery?: boolean;
+  retryOnly?: boolean;
   onRetry?: () => void;
   onContinue?: () => void;
   onRollback?: () => void;
@@ -24,8 +26,12 @@ export function SystemNotice({
       {recovery && (
         <div className="permission-actions">
           <button type="button" className="permission-allow" onClick={onRetry}>Retry</button>
-          <button type="button" className="permission-allow-task" onClick={onContinue}>Continue</button>
-          <button type="button" className="permission-deny" onClick={onRollback}><Undo2 size={11} /> Rollback</button>
+          {!retryOnly && (
+            <>
+              <button type="button" className="permission-allow-task" onClick={onContinue}>Continue</button>
+              <button type="button" className="permission-deny" onClick={onRollback}><Undo2 size={11} /> Rollback</button>
+            </>
+          )}
         </div>
       )}
     </div>

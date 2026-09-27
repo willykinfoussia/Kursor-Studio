@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { usePlanStore } from "../../../../stores/planStore";
 import { createPlanDocument } from "../../plans/planFile";
 import { WorkflowSessionState, shouldCloseImplementationCycle } from "../sessionState";
+import { turnVerdict } from "../../workflows/turnClassifier";
 import {
   evaluateWorkflowGate,
   LOAD_EXECUTING_PLANS_REASON,
@@ -69,7 +70,7 @@ describe("1% skill check", () => {
       goalKind: "build",
       invokedSkillIds: ["brainstorming"],
     });
-    next.beginUserTurn("oui");
+    next.beginUserTurn("oui", { verdict: turnVerdict({ reply: "design_yes" }) });
     expect(next.skillCheckThisTurn).toBe(true);
     expect(next.interactionMode).toBe("plan");
     expect(evaluateWorkflowGate("read_file", { path: "src/a.ts" }, false, next).decision).toBe("allow");
@@ -112,7 +113,7 @@ describe("HARD-GATE", () => {
       goalKind: "build",
       invokedSkillIds: ["brainstorming"],
     });
-    const result = next.beginUserTurn("oui je valide");
+    const result = next.beginUserTurn("oui je valide", { verdict: turnVerdict({ reply: "design_yes" }) });
     expect(result.designApproved).toBe(true);
     expect(result.planApproved).toBe(false);
     expect(next.designApproved).toBeTruthy();
@@ -128,7 +129,7 @@ describe("HARD-GATE", () => {
 
   it("stays in Agent on a build prompt until the design is approved", () => {
     const next = new WorkflowSessionState();
-    next.beginUserTurn("Crée une application tinder");
+    next.beginUserTurn("Crée une application tinder", { verdict: turnVerdict({ complexity: "complex", goalKind: "build" }) });
     expect(next.goalKind).toBe("build");
     expect(next.interactionMode).toBe("agent");
     expect(next.planMode).toBe(false);
@@ -140,12 +141,35 @@ describe("HARD-GATE", () => {
   it("does not auto-enter Plan when skipProcess is set", () => {
     const next = new WorkflowSessionState();
     next.skipProcess = true;
-    next.beginUserTurn("create src/util.ts");
+    next.beginUserTurn("create src/util.ts", { verdict: turnVerdict({ complexity: "medium", goalKind: "build" }) });
     expect(next.goalKind).toBe("build");
     expect(next.interactionMode).toBe("agent");
     next.approveDesign("eval");
     next.markSkillCheck();
     expect(evaluateWorkflowGate("write_file", { path: "src/util.ts" }, true, next).decision).toBe("allow");
+  });
+
+  it("allows delete_file on a simple verdict without brainstorming", () => {
+    const next = new WorkflowSessionState();
+    next.beginUserTurn("supprimer readme.md", {
+      verdict: turnVerdict({ complexity: "simple", goalKind: "other", modelTask: "simple-edit" }),
+    });
+    next.markSkillCheck();
+    expect(next.goalKind).toBe("other");
+    expect(next.complexity).toBe("simple");
+    expect(evaluateWorkflowGate("delete_file", { path: "readme.md" }, true, next).decision).toBe("allow");
+  });
+
+  it("denies mutations on a complex UI change until the design is approved", () => {
+    const next = new WorkflowSessionState();
+    next.beginUserTurn("améliorer l'ui", {
+      verdict: turnVerdict({ complexity: "complex", goalKind: "other" }),
+    });
+    next.markSkillCheck("brainstorming");
+    expect(next.goalKind).toBe("build");
+    const gate = evaluateWorkflowGate("write_file", { path: "src/App.tsx" }, true, next);
+    expect(gate.decision).toBe("deny");
+    if (gate.decision === "deny") expect(gate.reason).toMatch(/HARD-GATE/);
   });
 
   it("keeps explain prompts read-only even after a skill check", () => {
@@ -205,6 +229,51 @@ describe("HARD-GATE", () => {
     );
     expect(gate.decision).toBe("deny");
   });
+
+  it("allows a patch after systematic-debugging when a visual bug was classified as a build", () => {
+    const blocked = session({ skillCheckThisTurn: true, goalKind: "build" });
+    const denied = evaluateWorkflowGate("apply_patch", { path: "frontend/src/main.tsx" }, true, blocked);
+    expect(denied.decision).toBe("deny");
+    if (denied.decision === "deny") expect(denied.reason).toMatch(/HARD-GATE/);
+
+    const next = session({ skillCheckThisTurn: true, goalKind: "build" });
+    next.markSkillCheck("systematic-debugging");
+    expect(next.goalKind).toBe("bug");
+    expect(evaluateWorkflowGate("apply_patch", { path: "frontend/src/main.tsx" }, true, next).decision).toBe("allow");
+  });
+
+  it("does not leave a build when brainstorming is already loaded", () => {
+    const next = session({ skillCheckThisTurn: true, goalKind: "build" });
+    next.markSkillCheck("brainstorming");
+    next.markSkillCheck("systematic-debugging");
+    expect(next.goalKind).toBe("build");
+    const gate = evaluateWorkflowGate("apply_patch", { path: "frontend/src/main.tsx" }, true, next);
+    expect(gate.decision).toBe("deny");
+    if (gate.decision === "deny") expect(gate.reason).toMatch(/HARD-GATE/);
+  });
+
+  it("lets a bug report replace an in-progress build, and keeps a design yes on the build", () => {
+    const next = new WorkflowSessionState();
+    next.beginUserTurn("crée une application", {
+      verdict: turnVerdict({ goalKind: "build", complexity: "complex" }),
+    });
+    next.beginUserTurn("le css ne s'applique pas", {
+      verdict: turnVerdict({ goalKind: "bug", continuation: "continue", complexity: "medium" }),
+    });
+    expect(next.goalKind).toBe("bug");
+
+    const approved = new WorkflowSessionState();
+    approved.beginUserTurn("crée une application", {
+      verdict: turnVerdict({ goalKind: "build", complexity: "complex" }),
+    });
+    approved.markSkillCheck("brainstorming");
+    const result = approved.beginUserTurn("oui", {
+      verdict: turnVerdict({ reply: "design_yes", goalKind: "bug", continuation: "continue" }),
+    });
+    expect(result.designApproved).toBe(true);
+    expect(approved.goalKind).toBe("build");
+    expect(approved.interactionMode).toBe("plan");
+  });
 });
 
 describe("plan mode and executing-plans", () => {
@@ -259,11 +328,11 @@ describe("plan mode and executing-plans", () => {
       goalKind: "build",
       invokedSkillIds: ["brainstorming"],
     });
-    expect(next.beginUserTurn("ok").designApproved).toBe(false);
+    expect(next.beginUserTurn("ok", { verdict: turnVerdict({ reply: "affirmative" }) }).designApproved).toBe(false);
     expect(next.designApproved).toBeNull();
     expect(next.interactionMode).toBe("agent");
-    expect(next.beginUserTurn("d'accord").designApproved).toBe(false);
-    expect(next.beginUserTurn("oui").designApproved).toBe(true);
+    expect(next.beginUserTurn("d'accord", { verdict: turnVerdict({ reply: "affirmative" }) }).designApproved).toBe(false);
+    expect(next.beginUserTurn("oui", { verdict: turnVerdict({ reply: "design_yes" }) }).designApproved).toBe(true);
     expect(next.interactionMode).toBe("plan");
   });
 
@@ -273,7 +342,7 @@ describe("plan mode and executing-plans", () => {
       goalKind: "build",
       invokedSkillIds: ["brainstorming"],
     });
-    expect(next.beginUserTurn("Oui, c'est bon").designApproved).toBe(true);
+    expect(next.beginUserTurn("Oui, c'est bon", { verdict: turnVerdict({ reply: "design_yes" }) }).designApproved).toBe(true);
     expect(next.designApproved).toBeTruthy();
     expect(next.interactionMode).toBe("plan");
   });
@@ -291,7 +360,7 @@ describe("plan mode and executing-plans", () => {
       planPath: plan.path,
     });
     next.setInteractionMode("plan");
-    next.beginUserTurn("non je veux une application local");
+    next.beginUserTurn("non je veux une application local", { verdict: turnVerdict({ reply: "design_no" }) });
     expect(next.goalKind).toBe("build");
     expect(next.designApproved).toBeNull();
     expect(next.planApproved).toBe(false);
@@ -644,7 +713,7 @@ describe("plan mode and executing-plans", () => {
       planPath: ".kursor/plans/demo.plan.md",
       invokedSkillIds: ["brainstorming", "writing-plans"],
     });
-    const result = next.beginUserTurn("oui");
+    const result = next.beginUserTurn("oui", { verdict: turnVerdict({ reply: "design_yes" }) });
     expect(result.planApproved).toBe(false);
     expect(next.planApproved).toBe(false);
     expect(next.interactionMode).toBe("plan");
@@ -821,7 +890,7 @@ describe("workflow session reset", () => {
     expect(next.invokedSkillIds).toEqual([]);
     expect(next.interactionMode).toBe("agent");
     next.markSkillCheck("brainstorming");
-    const result = next.beginUserTurn("oui");
+    const result = next.beginUserTurn("oui", { verdict: turnVerdict({ reply: "design_yes" }) });
     expect(result.designApproved).toBe(true);
     expect(next.designApproved).toBeTruthy();
   });
@@ -835,14 +904,16 @@ describe("workflow session reset", () => {
       goalKind: "build",
     });
     const plan = { status: "done", todos: [{ status: "completed" }] };
-    expect(shouldCloseImplementationCycle(next, plan, "finalise l'implémentation")).toBe(false);
-    expect(shouldCloseImplementationCycle(next, plan, "verify the routes")).toBe(false);
-    expect(shouldCloseImplementationCycle(next, plan, "add a settings page")).toBe(true);
+    expect(shouldCloseImplementationCycle(next, plan, true)).toBe(false);
+    expect(shouldCloseImplementationCycle(next, plan, true)).toBe(false);
+    expect(shouldCloseImplementationCycle(next, plan, false)).toBe(true);
   });
 
   it("classifies finalize prompts as a build continuation", () => {
     const next = new WorkflowSessionState();
-    next.beginUserTurn("finalise l'implémentation de l'application de sport");
+    next.beginUserTurn("finalise l'implémentation de l'application de sport", {
+      verdict: turnVerdict({ continuation: "continue", complexity: "medium", goalKind: "build" }),
+    });
     expect(next.goalKind).toBe("build");
   });
 
@@ -869,7 +940,7 @@ describe("workflow session reset", () => {
       skipProcess: true,
       planTodosComplete: true,
     });
-    expect(shouldCloseImplementationCycle(next, { status: "done", todos: [{ status: "completed" }] }, "add a settings page")).toBe(false);
+    expect(shouldCloseImplementationCycle(next, { status: "done", todos: [{ status: "completed" }] }, false)).toBe(false);
   });
 
   it("does not close before the current plan is loaded", () => {
@@ -887,6 +958,6 @@ describe("workflow session reset", () => {
       planTodosComplete: true,
     });
     expect(shouldCloseImplementationCycle(next, null)).toBe(true);
-    expect(shouldCloseImplementationCycle(next, null, "verify the routes")).toBe(false);
+    expect(shouldCloseImplementationCycle(next, null, true)).toBe(false);
   });
 });

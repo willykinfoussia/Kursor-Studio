@@ -56,13 +56,16 @@ import type {
 } from "./types";
 import { VercelAIService } from "./VercelAIService";
 import { buildSystemPrompt } from "./systemPrompt";
+import { clipPromptText, toSliceSummary } from "./context/assemble";
 import { WorkflowEngine } from "./workflows/WorkflowEngine";
 import {
   VerificationEngine,
   VerificationService,
   commandCheckRunner,
+  formatForModel,
   projectVerifyFiles,
 } from "./verification";
+import { runRequiredVerification, type RequiredVerificationTesting } from "./verification/runRequiredVerification";
 import type { VerificationRunInput } from "./verification/types";
 import { TestingEngine } from "../testing/engine";
 import { createTestingStore } from "../testing/store";
@@ -96,6 +99,8 @@ import { gitApi } from "../tauri/githubApi";
 import { projectApi } from "../tauri/projectApi";
 import { isDetachedGitBranch, sanitizeAgentBranchName } from "./tools/gitBranch";
 import { WorkflowSessionState, shouldCloseImplementationCycle } from "./workflow/sessionState";
+import { isAffirmativeReply } from "./workflow/approvalLanguage";
+import { classifyTurn, SAFE_TURN_VERDICT, type TurnReply } from "./workflows/turnClassifier";
 import { isPlanDocumentWrite, pathFromToolInput, trackedMutationPath } from "./workflow/planPath";
 import {
   cycleInteractionMode,
@@ -225,6 +230,8 @@ export class AgentRuntime {
   private readonly loop: AgentLoop;
   private readonly verificationEngine: VerificationEngine;
   private readonly verificationService: VerificationService;
+  private readonly checkRunner?: import("./verification").CheckRunner;
+  private readonly requiredTesting: RequiredVerificationTesting;
   private verifyController: AbortController | null = null;
   private readonly aiService: AIService;
   private readonly sessions: SessionManager;
@@ -329,6 +336,31 @@ export class AgentRuntime {
     this.registry = dependencies.registry ?? toolRegistry;
     this.files = dependencies.files ?? runtimeFiles();
     this.verificationEngine = dependencies.verification ?? new VerificationEngine({ files: this.files });
+    this.checkRunner = dependencies.checkRunner;
+    const requiredTesting: RequiredVerificationTesting = {
+      run: async (input) => {
+        const projectId = this.getProjectId();
+        if (!projectId) return null;
+        const store = createTestingStore();
+        const engine = new TestingEngine({
+          files: projectVerifyFiles(),
+          runner: input.runner,
+          store,
+          ai: dependencies.aiService,
+          cwd: this.getProjectRoot() ?? "",
+        });
+        const run = await engine.runLevels({
+          projectId,
+          levels: input.levels,
+          taskId: this.activeTaskId,
+          agentRunId: this.lastRunId,
+          signal: input.signal,
+        });
+        const strategy = await store.getStrategy(projectId);
+        return strategy ? { run, strategy } : null;
+      },
+    };
+    this.requiredTesting = requiredTesting;
     this.verificationService = new VerificationService({
       files: projectVerifyFiles(),
       engine: this.verificationEngine,
@@ -347,29 +379,7 @@ export class AgentRuntime {
       registry: this.registry,
       verification: this.verificationEngine,
       checkRunner: dependencies.checkRunner,
-      testing: {
-        run: async (input) => {
-          const projectId = this.getProjectId();
-          if (!projectId) return null;
-          const store = createTestingStore();
-          const engine = new TestingEngine({
-            files: projectVerifyFiles(),
-            runner: input.runner,
-            store,
-            ai: dependencies.aiService,
-            cwd: this.getProjectRoot() ?? "",
-          });
-          const run = await engine.runLevels({
-            projectId,
-            levels: input.levels,
-            taskId: this.activeTaskId,
-            agentRunId: this.lastRunId,
-            signal: input.signal,
-          });
-          const strategy = await store.getStrategy(projectId);
-          return strategy ? { run, strategy } : null;
-        },
-      },
+      testing: requiredTesting,
     });
     this.aiService = dependencies.aiService;
     this.orchestrator = new AgentOrchestrator({
@@ -666,9 +676,25 @@ export class AgentRuntime {
       }
 
       const modeBefore = this.workflowSession.interactionMode;
-      bindContinuingProjectPlan(this.workflowSession, text);
-      const cycleIdle = shouldCloseImplementationCycle(this.workflowSession, this.sessionPlan(), text);
-      const chatApprovals = this.workflowSession.beginUserTurn(text, { cycleIdle });
+      const verdict = this.workflowSession.subagent
+        ? SAFE_TURN_VERDICT
+        : await classifyTurn(this.aiService, this.turnClassifierInput(text));
+      bindContinuingProjectPlan(this.workflowSession, verdict.continuation === "continue");
+      const cycleIdle = shouldCloseImplementationCycle(
+        this.workflowSession,
+        this.sessionPlan(),
+        verdict.continuation === "continue",
+      );
+      const chatApprovals = this.workflowSession.beginUserTurn(text, { cycleIdle, verdict });
+      this.emit({
+        type: "turn-classified",
+        goalKind: this.workflowSession.goalKind,
+        complexity: this.workflowSession.complexity,
+        reply: verdict.reply,
+        skipProcess: this.workflowSession.skipProcess,
+        continuation: verdict.continuation,
+        modelTask: this.workflowSession.modelTask,
+      });
       if (this.workflowSession.interactionMode !== modeBefore) {
         this.emit({ type: "agent-mode", mode: this.workflowSession.interactionMode });
         this.emit({ type: "plan-mode", enabled: this.workflowSession.interactionMode === "plan" });
@@ -682,6 +708,7 @@ export class AgentRuntime {
       const context = await this.engine.run(text, this.createRunner(), {
         goalKind: this.workflowSession.goalKind,
         skipProcess: this.workflowSession.skipProcess,
+        complexity: this.workflowSession.complexity,
       });
       this.workflowContext = context;
       if (context.status === "rejected") {
@@ -783,7 +810,7 @@ export class AgentRuntime {
       ordered: this.orderedModels(settings),
       hints: {
         workflowStepIds: request.steps.map((step) => step.id),
-        complexity: request.context.complexity,
+        modelTask: this.workflowSession.modelTask,
       },
       policy: settings.modelPolicy,
       pin: skillPin,
@@ -792,13 +819,9 @@ export class AgentRuntime {
       type: "context-assembled",
       tokensUsed: context.assembled.tokensUsed,
       trace: context.assembled.trace,
-      slices: context.assembled.slices.map((slice) => ({
-        id: slice.id,
-        source: slice.source,
-        tokens: slice.tokens,
-        included: true,
-        meta: slice.meta,
-      })),
+      slices: context.assembled.slices.map(toSliceSummary),
+      systemPrompt: clipPromptText(context.assembled.systemPrompt),
+      scope: "parent",
     });
     skillSession.emit = (event) => this.emit(event);
     for (const skill of skillSession.invoked) {
@@ -1115,7 +1138,11 @@ export class AgentRuntime {
       this.questionWaiters.delete(id);
       this.emit({ type: "approval-resolved", id, kind: "workflow", decision });
       this.resumeAfterApproval();
-      question({ selected: decision === "allow" ? "yes" : "no", allow: decision === "allow" });
+      question({
+        selected: decision === "allow" ? "yes" : "no",
+        allow: decision === "allow",
+        reply: decision === "allow" ? "design_yes" : "design_no",
+      });
       return;
     }
     const waiter = this.workflowWaiters.get(id);
@@ -1136,13 +1163,35 @@ export class AgentRuntime {
     this.emit({ type: "recovery-dismissed" });
   }
 
-  resolveUserQuestion(id: string, selected: string, allow = true) {
+  resolveUserQuestion(id: string, selected: string) {
     const waiter = this.questionWaiters.get(id);
     if (!waiter) return;
     this.questionWaiters.delete(id);
+    void this.finishUserQuestion(id, selected, waiter);
+  }
+
+  private turnClassifierInput(prompt: string) {
+    const session = this.workflowSession;
+    return {
+      prompt,
+      previousGoalKind: session.goalKind,
+      designPending: session.goalKind === "build" && !session.designApproved,
+      planOpen: Boolean(session.planPath),
+    };
+  }
+
+  private async finishUserQuestion(
+    id: string,
+    selected: string,
+    waiter: (answer: { selected: string; allow: boolean; reply: TurnReply }) => void,
+  ) {
+    const verdict = this.workflowSession.subagent
+      ? SAFE_TURN_VERDICT
+      : await classifyTurn(this.aiService, this.turnClassifierInput(selected));
+    const allow = isAffirmativeReply(verdict.reply);
     this.emit({ type: "approval-resolved", id, kind: "workflow", decision: allow ? "allow" : "deny", selected });
     this.resumeAfterApproval();
-    waiter({ selected, allow });
+    waiter({ selected, allow, reply: verdict.reply });
   }
 
   setInteractionMode(mode: AgentInteractionMode) {
@@ -1373,6 +1422,18 @@ export class AgentRuntime {
 
     if (!feature) {
       return { message: "No implementation branch to merge." };
+    }
+
+    const report = await runRequiredVerification({
+      engine: this.verificationEngine,
+      runner: this.checkRunner,
+      testing: this.checkRunner ? this.requiredTesting : null,
+      planned: {},
+      attempt: 1,
+      requestId: this.lastRunId ?? "finish-branch",
+    });
+    if (!report.ok) {
+      return { message: formatForModel(report), merged: false };
     }
 
     try {

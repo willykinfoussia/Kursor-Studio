@@ -63,7 +63,6 @@ export function toRunEventFromStored(record: StoredTraceRecord): AgentRunEvent |
 
 export const LAYOUT_SKIP_EVENT_TYPES = new Set<AgentEvent["type"]>([
   "text-delta",
-  "assistant-message",
   "verification-check-started",
   "verification-check-completed",
   "hook-fired",

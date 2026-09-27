@@ -39,6 +39,21 @@ describe("interaction modes", () => {
     expect(modeSystemOverlay("debug")).toMatch(/systematic-debugging/);
   });
 
+  it("tells Agent to patch a bug without a design approval", () => {
+    const overlay = modeSystemOverlay("agent", { goalKind: "bug", designApproved: null });
+    expect(overlay).toMatch(/systematic-debugging/);
+    expect(overlay).toMatch(/Do not load the brainstorming skill/);
+    expect(overlay).toMatch(/Do not wait for a design approval/);
+    expect(overlay).not.toMatch(/yes\/oui/);
+  });
+
+  it("tells Agent to do a simple task without brainstorming", () => {
+    const overlay = modeSystemOverlay("agent", { goalKind: "other", complexity: "simple", designApproved: null });
+    expect(overlay).toMatch(/Do it directly/i);
+    expect(overlay).toMatch(/Do not load the brainstorming skill/i);
+    expect(overlay).not.toMatch(/Load the brainstorming skill first/i);
+  });
+
   it("keeps Agent on brainstorming until the design is approved", () => {
     const overlay = modeSystemOverlay("agent", { goalKind: "build", designApproved: null });
     expect(overlay).toMatch(/brainstorming/i);
@@ -240,9 +255,9 @@ describe("interaction modes", () => {
   it("snapshots and restores designNotes and designBrief", () => {
     const next = new WorkflowSessionState();
     next.recordDesignChoice("Workout Tracker");
-    next.recordDesignChoice("oui");
-    next.recordDesignChoice("Oui, j'approuve");
-    next.recordDesignChoice("Non, je veux changer quelque chose");
+    next.recordDesignChoice("oui", "design_yes");
+    next.recordDesignChoice("Oui, j'approuve", "design_yes");
+    next.recordDesignChoice("Non, je veux changer quelque chose", "design_no");
     next.recordDesignChoice("Web — React + TypeScript + Vite");
     next.recordDesignChoice("Core — Workouts + Historique simple");
     next.setDesignBrief("React + localStorage workout app.");

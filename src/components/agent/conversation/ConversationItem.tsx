@@ -132,11 +132,13 @@ function ConversationItemView({
         );
       }
       if (item.kind === "recovery" || item.kind === "mode") {
+        const verificationRetry = item.kind === "recovery" && item.text.startsWith("Verification failed");
         return (
           <SystemNotice
             kind={item.kind}
             text={item.text}
-            recovery={item.kind === "recovery" && recoveryAvailable}
+            recovery={(item.kind === "recovery" && recoveryAvailable) || verificationRetry}
+            retryOnly={verificationRetry}
             onRetry={onRetry}
             onContinue={onContinue}
             onRollback={onRollback}

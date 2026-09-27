@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { languageFromPath } from "../languageFromPath";
+import { isMarkdownDocumentPath, languageFromPath } from "../languageFromPath";
 
 describe("languageFromPath", () => {
   it("maps common extensions", () => {
@@ -18,5 +18,13 @@ describe("languageFromPath", () => {
     expect(languageFromPath("README.md")).toBe("markdown");
     expect(languageFromPath("docker-compose.yaml")).toBe("yaml");
     expect(languageFromPath("config.yml")).toBe("yaml");
+  });
+});
+
+describe("isMarkdownDocumentPath", () => {
+  it("detects markdown documents by extension", () => {
+    expect(isMarkdownDocumentPath("README.md")).toBe(true);
+    expect(isMarkdownDocumentPath("docs/foo.markdown")).toBe(true);
+    expect(isMarkdownDocumentPath("src/a.ts")).toBe(false);
   });
 });

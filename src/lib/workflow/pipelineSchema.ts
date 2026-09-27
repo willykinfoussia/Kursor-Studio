@@ -10,6 +10,7 @@ export const PIPELINE_IDS = {
   user: "pipeline:user",
   task: "pipeline:task",
   hook: "pipeline:hook",
+  classify: "pipeline:classify",
   skillCheck: "pipeline:skill-check",
   orchestrator: "pipeline:orchestrator",
   loop: "pipeline:loop",
@@ -243,10 +244,10 @@ function specialistLoop(id: string): PipelineTemplateNode[] {
 }
 
 export const PIPELINE_TEMPLATE_NODES: PipelineTemplateNode[] = [
-  core(PIPELINE_IDS.boot, "skill", "using-superpowers", "Session injects the 1% skill body on the parent. Subagents skip it (SUBAGENT-STOP).", 24, 48),
-  core(PIPELINE_IDS.user, "user_prompt", "Prompt", "AgentPanel.send — the user message that starts a run.", 244, 48),
-  core(PIPELINE_IDS.task, "task", "Session + Task", "Allocates session, runId, and TaskManager.create before AgentLoop.", 464, 48),
-  core(PIPELINE_IDS.hook, "checkpoint", "user_prompt_submit", "Project hook. Deny fails the run immediately.", 684, 48),
+  core(PIPELINE_IDS.user, "user_prompt", "Prompt", "AgentPanel.send — the user message that starts a run.", 24, 48),
+  core(PIPELINE_IDS.task, "task", "Session + Task", "Allocates session, runId, and TaskManager.create before AgentLoop.", 244, 48),
+  core(PIPELINE_IDS.hook, "checkpoint", "user_prompt_submit", "Project hook. Deny fails the run immediately.", 464, 48),
+  core(PIPELINE_IDS.classify, "planning", "Classify JEV", "classifyTurn (typesafe-ai/jev) after the prompt hook. Ask forces explain, Debug forces bug. simple stays other. medium and complex become build.", 684, 48),
   core(PIPELINE_IDS.compact, "checkpoint", "Compact", "Extractive first, then LLM-CMP if still over budget. Runs in runTurn before ContextEngine. Reinject using-superpowers. Skipped when the window fits.", 904, 48),
   core(PIPELINE_IDS.context, "context", "Context Builder", "1× per user message, before AgentLoop. Parallel sources feed Rank, then caps, token budget, assemble. Does not pick tools.", 1124, 48, { kind: "parent" }),
   core(PIPELINE_IDS.loop, "agent", "AgentLoop", "One streamText tool loop per user turn. Filets Superpowers live in this box. Double-click the frame for the runtime (streamText, tools, verify).", 1344, 48, { kind: "parent" }),
@@ -371,10 +372,10 @@ function edge(source: string, target: string, type: AgentGraphEdge["type"]): Age
 }
 
 export const PIPELINE_SPINE_EDGES: AgentGraphEdge[] = [
-  edge(PIPELINE_IDS.boot, PIPELINE_IDS.user, "sequence"),
   edge(PIPELINE_IDS.user, PIPELINE_IDS.task, "sequence"),
   edge(PIPELINE_IDS.task, PIPELINE_IDS.hook, "sequence"),
-  edge(PIPELINE_IDS.hook, PIPELINE_IDS.compact, "sequence"),
+  edge(PIPELINE_IDS.hook, PIPELINE_IDS.classify, "sequence"),
+  edge(PIPELINE_IDS.classify, PIPELINE_IDS.compact, "sequence"),
   edge(PIPELINE_IDS.compact, PIPELINE_IDS.context, "sequence"),
   edge(PIPELINE_IDS.context, PIPELINE_IDS.loop, "sequence"),
   edge(PIPELINE_IDS.loop, PIPELINE_IDS.result, "sequence"),
@@ -539,10 +540,10 @@ export function filetBranchIdForGoal(goalKind: GoalKind): "explain" | "bug" | "b
 }
 
 export const PIPELINE_OVERVIEW_IDS = [
-  PIPELINE_IDS.boot,
   PIPELINE_IDS.user,
   PIPELINE_IDS.task,
   PIPELINE_IDS.hook,
+  PIPELINE_IDS.classify,
   PIPELINE_IDS.compact,
   PIPELINE_IDS.context,
   PIPELINE_IDS.loop,

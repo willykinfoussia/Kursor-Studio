@@ -8,6 +8,7 @@ import { RecoveryManager } from "../recovery";
 import type { AgentEvent, AgentMessage, AgentStream, AIRequestOptions } from "../types";
 import { gitApi } from "../../tauri/githubApi";
 import { projectApi } from "../../tauri/projectApi";
+import { VerificationEngine } from "../verification/VerificationEngine";
 
 const MEDIUM_GOAL = "ajoute une fonction de filtrage dans le composant TodoList";
 
@@ -115,7 +116,8 @@ describe("AgentRuntime", () => {
 
     expect(calls).toEqual([AI_MODELS[0].id]);
     expect(events.some((event) => event.type === "fallback")).toBe(false);
-    expect(events[events.length - 1]?.type).toBe("cancelled");
+    expect(events.some((event) => event.type === "cancelled")).toBe(true);
+    expect(events[events.length - 1]?.type).toBe("recovery-available");
     expect(runtime.getState().status).toBe("cancelled");
   });
 
@@ -205,6 +207,16 @@ describe("AgentRuntime", () => {
   it("skips a disk checkpoint for a simple rename", async () => {
     const service: AIService = {
       streamChat: vi.fn(async () => textStream("renamed")),
+      evaluate: async () => ({
+        answers: {
+          goalKind: { type: "choice", choice: "other", probabilities: { other: 0.9 } },
+          complexity: { type: "choice", choice: "simple", probabilities: { simple: 0.9 } },
+          reply: { type: "choice", choice: "none", probabilities: { none: 0.9 } },
+          skipProcess: { type: "choice", choice: "keep", probabilities: { keep: 0.9 } },
+          continuation: { type: "choice", choice: "new", probabilities: { new: 0.9 } },
+          modelTask: { type: "choice", choice: "simple-edit", probabilities: { "simple-edit": 0.9 } },
+        },
+      }),
     };
     const recovery = silentRecovery();
     const create = vi.spyOn(recovery, "create");
@@ -322,6 +334,55 @@ describe("AgentRuntime", () => {
       expect(runtime.workflowSession.agentBranch).toBeNull();
     } finally {
       status.mockRestore();
+      checkout.mockRestore();
+      mergeContinue.mockRestore();
+      merge.mockRestore();
+      del.mockRestore();
+      push.mockRestore();
+    }
+  });
+
+  it("refuses to merge when required verification is red", async () => {
+    const checkout = vi.spyOn(gitApi, "checkout").mockResolvedValue(undefined);
+    const mergeContinue = vi.spyOn(gitApi, "mergeContinue").mockRejectedValue(new Error("no merge"));
+    const merge = vi.spyOn(gitApi, "merge").mockResolvedValue({
+      merged: true,
+      inProgress: false,
+      conflicts: [],
+      message: "Merged feat.",
+    });
+    const del = vi.spyOn(gitApi, "deleteBranch").mockResolvedValue(undefined);
+    const push = vi.spyOn(gitApi, "push").mockResolvedValue(undefined);
+    const runtime = createRuntime(
+      { streamChat: vi.fn(async () => textStream("ok")) },
+      {
+        getProjectId: () => null,
+        verification: new VerificationEngine({ profile: { lint: "pnpm lint" } }),
+        checkRunner: {
+          async run() {
+            return {
+              exitCode: 1,
+              stdout: "",
+              stderr: "error TS6059: File 'backend/tests/api.test.ts' is not under 'rootDir'.",
+            };
+          },
+        },
+      },
+    );
+    runtime.workflowSession.agentBranch = { name: "feat", base: "main" };
+    try {
+      const result = await (runtime as unknown as {
+        finishBranch: (input: { choice: "merge" }) => Promise<{ message: string; merged?: boolean }>;
+      }).finishBranch({ choice: "merge" });
+      expect(result.merged).toBe(false);
+      expect(result.message).toContain("TS6059");
+      expect(result.message).toMatch(/pre-existing/);
+      expect(checkout).not.toHaveBeenCalled();
+      expect(merge).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalled();
+      expect(runtime.workflowSession.agentBranch).toEqual({ name: "feat", base: "main" });
+    } finally {
       checkout.mockRestore();
       mergeContinue.mockRestore();
       merge.mockRestore();
