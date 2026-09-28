@@ -1,6 +1,7 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+description: Use when encountering any bug, test failure, unexpected behavior, or performance regression, before proposing fixes. For a hard bug, build a red loop before hypothesizing.
+triggers: [debug, diagnose, bug, regression]
 ---
 
 # Systematic Debugging
@@ -18,6 +19,10 @@ NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
 ```
 
 If you haven't completed Phase 1, you cannot propose fixes.
+
+## Redact
+
+Before quoting a command, an output, or a captured artifact, replace every secret with `<REDACTED>`. Prefer loops that read credentials from the environment. If a trace carries auth headers, quote only the lines that carry the signal. If the redacted output is not enough to diagnose, say so and ask.
 
 ## When to Use
 
@@ -49,6 +54,8 @@ You MUST complete each phase before proceeding to the next.
 
 **BEFORE attempting ANY fix:**
 
+If `CONTEXT.md` or ADRs exist in the area you are touching, read them before hypothesizing.
+
 1. **Read Error Messages Carefully**
    - Don't skip past errors or warnings
    - They often contain the exact solution
@@ -61,17 +68,48 @@ You MUST complete each phase before proceeding to the next.
    - Does it happen every time?
    - If not reproducible → gather more data, don't guess
 
-3. **Check Recent Changes**
+   Phase 1 is not done until you have a **tight red loop**: one command you have **already run** (show the invocation and the redacted output) that drives the actual bug path and asserts the user's exact symptom. Not "runs without erroring". It must be able to go red on this bug and green once fixed. Same verdict every run. Seconds, not minutes. You can run it unattended.
+
+   Build that loop before you theorize. Reading the stack and the message of **this** run stays mandatory. Forming a hypothesis before the command exists is a red flag.
+
+   Ways to construct one, in roughly this order:
+
+   1. Failing test at whatever seam reaches the bug: unit, integration, e2e.
+   2. Curl / HTTP script against a running dev server.
+   3. CLI invocation with a fixture input, diffing stdout against a known-good snapshot.
+   4. Headless browser script that drives the UI and asserts on DOM, console, or network.
+   5. Replay a captured trace: a real request, payload, or event log, through the code path in isolation.
+   6. Throwaway harness: a minimal subset of the system that exercises the bug with a single call.
+   7. Property / fuzz loop when the bug is "sometimes wrong output".
+   8. Bisection harness when the bug appeared between two known states, so `git bisect run` can check each state.
+   9. Differential loop: same input through old vs new (or two configs), then diff the outputs.
+   10. Human in the loop, last resort. Copy `scripts/hitl-loop.template.sh`, or if bash is unavailable, drive the same `step` / `capture` prompts in the reply.
+
+   Once a loop exists, tighten it: faster setup, a sharper assertion than "didn't crash", and less flake (pin time, seed RNG, isolate the filesystem, freeze the network). A 30-second flaky loop is barely better than no loop.
+
+   For a non-deterministic bug, raise the reproduction rate until it is debuggable: loop the trigger, add stress, narrow timing windows. A 50% flake can be debugged; 1% cannot.
+
+   For a **performance regression**, do not start with logs. Establish a baseline (timing harness, profiler, query plan), then bisect. Measure first, fix second. Boundary logs below stay for behavior bugs.
+
+   When you genuinely cannot build a loop, stop. List what you tried. Ask for environment access, a redacted captured artifact, or permission to add temporary instrumentation. Do not proceed to a hypothesis without a loop.
+
+3. **Minimise**
+
+   Once the loop is red, shrink the repro to the smallest scenario that still goes red. Cut inputs, callers, config, data, and steps one at a time, re-running the loop after each cut. Keep only what is load-bearing: removing any remaining element makes the loop go green. Do not hypothesise until you have reproduced and minimised.
+
+4. **Check Recent Changes**
    - What changed that could cause this?
    - Git diff, recent commits
    - New dependencies, config changes
    - Environmental differences
 
-4. **Gather Evidence in Multi-Component Systems**
+5. **Gather Evidence in Multi-Component Systems**
 
    **WHEN system has multiple components (CI → build → signing, API → service → database):**
 
    **BEFORE proposing fixes, add diagnostic instrumentation:**
+
+   Tag every temporary debug log with a unique prefix, e.g. `[DEBUG-a4f2]`, so cleanup is one grep. Untagged logs survive; tagged logs die. Never "log everything and grep".
    ```
    For EACH component boundary:
      - Log what data enters component
@@ -105,7 +143,7 @@ You MUST complete each phase before proceeding to the next.
 
    **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
 
-5. **Trace Data Flow**
+6. **Trace Data Flow**
 
    **WHEN error is deep in call stack:**
 
@@ -149,10 +187,13 @@ You MUST complete each phase before proceeding to the next.
    - Write it down
    - Be specific, not vague
 
+   Generate **3–5 ranked hypotheses** before testing any of them. A single first idea anchors you. Each one must be falsifiable: "If X is the cause, then changing Y makes the bug disappear / changing Z makes it worse." If you cannot state the prediction, discard or sharpen it. Show the ranked list to your human partner before testing. Do not block if they are away; proceed with your ranking. Then test the top one.
+
 2. **Test Minimally**
    - Make the SMALLEST possible change to test hypothesis
    - One variable at a time
    - Don't fix multiple things at once
+   - Prefer a debugger or REPL breakpoint when the environment supports it. One breakpoint beats ten logs. Targeted logs only at the boundary that distinguishes this hypothesis. Each probe maps to one prediction from the ranked list.
 
 3. **Verify Before Continuing**
    - Did it work? Yes → Phase 4
@@ -175,6 +216,7 @@ You MUST complete each phase before proceeding to the next.
    - One-off test script if no framework
    - MUST have before fixing
    - Use the `superpowers:test-driven-development` skill for writing proper failing tests
+   - The seam must exercise the real bug pattern as it occurs at the call site. A test that is too shallow (one caller when the bug needs several, a unit test that cannot replicate the chain) gives false confidence. If no correct seam exists, say so. That is the finding. Do not write the shallow test.
 
 2. **Implement Single Fix**
    - Address the root cause identified
@@ -187,6 +229,11 @@ You MUST complete each phase before proceeding to the next.
    - No other tests broken?
    - Issue actually resolved?
    - Use the `superpowers:verification-before-completion` skill before claiming success
+   - Re-run the Phase 1 loop against the original, un-minimised scenario
+   - Regression test passes, or the absence of a correct seam is documented
+   - All `[DEBUG-...]` instrumentation is removed (grep the prefix)
+   - Throwaway prototypes are deleted
+   - The hypothesis that turned out correct is stated in the commit message
 
 4. **If Fix Doesn't Work**
    - STOP
@@ -223,6 +270,7 @@ If you catch yourself thinking:
 - "Pattern says X but I'll adapt it differently"
 - "Here are the main problems: [lists fixes without investigation]"
 - Proposing solutions before tracing data flow
+- Forming a hypothesis before you have already run a command that can go red on this exact symptom
 - **"One more fix attempt" (when already tried 2+)**
 - **Each fix reveals new problem in different place**
 
@@ -258,9 +306,9 @@ If you catch yourself thinking:
 
 | Phase | Key Activities | Success Criteria |
 |-------|---------------|------------------|
-| **1. Root Cause** | Read errors, reproduce, check changes, gather evidence | Understand WHAT and WHY |
+| **1. Root Cause** | Read errors, red loop, minimise, check changes, gather evidence | A command already run goes red on this symptom; understand WHAT and WHY |
 | **2. Pattern** | Find working examples, compare | Identify differences |
-| **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
+| **3. Hypothesis** | Rank 3–5 falsifiable theories, test the top one minimally | Confirmed or new hypothesis |
 | **4. Implementation** | Create test, fix, verify | Bug resolved, tests pass |
 
 ## When Process Reveals "No Root Cause"
@@ -281,3 +329,4 @@ These techniques are part of systematic debugging and available in this director
 - **`root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
 - **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
 - **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
+- **`scripts/hitl-loop.template.sh`** - Last resort when a human must click. If bash is unavailable, drive the same `step` / `capture` prompts in the reply.

@@ -38,16 +38,17 @@ override it:
   this repo: a new flag, a small endpoint, a one-file fix.
   Understanding the kind of app is not enough — bounded means the flow
   you are changing is already here to read. If there is no existing
-  flow to change, the task is not bounded. Ask the clarifying
-  questions that matter, present a short design IN CHAT (a few
+  flow to change, the task is not bounded. Run one frontier round on
+  the decisions that matter, present a short design IN CHAT (a few
   sentences to a few short paragraphs), and STOP. Implementation
   starts only after your human partner says yes to that design — a
   bounded task's approval is as hard a gate as an architectural
   one. No spec file, no implementation plan document.
 - **Architectural** — new projects, new subsystems, changes that
   restructure how components fit together or alter interfaces others
-  depend on. Follow the full process: questions, approaches, sectioned
-  design, written spec, then the writing-plans skill.
+  depend on. Follow the full process: frontier rounds until the
+  frontier is empty, approaches, sectioned design, written spec, then
+  the writing-plans skill.
 
 When in doubt between two paths, take the heavier one. The ratchet is
 one-way: hidden complexity discovered mid-task upgrades the path —
@@ -88,7 +89,7 @@ your path and complete them in order.
 
 **Bounded:**
 1. **Explore project context** — check files, docs, recent commits
-2. **Ask clarifying questions** — one at a time, the ones that matter
+2. **One frontier round** — the decisions that matter, as one matrix `ask_user_question`
 3. **Present short design in chat** — approach, files touched, testing
 4. **Get approval** — STOP and wait for an explicit yes; presenting the design and starting in the same breath is skipping the gate
 5. **Implement** — proceed with the normal development workflow (TDD applies); no plan document
@@ -96,7 +97,7 @@ your path and complete them in order.
 **Architectural:**
 1. **Explore project context** — check files, docs, recent commits
 2. **Offer the visual companion just-in-time** — NOT upfront. The first time a question would genuinely be clearer shown than described, offer it then (its own message); on approval its browser tab opens for you. If no visual question ever arises, never offer it. See the Visual Companion section below.
-3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+3. **Frontier rounds** — until the frontier is empty: purpose, constraints, success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
 6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
@@ -110,13 +111,13 @@ your path and complete them in order.
 digraph brainstorming {
     "Classify: spike / bounded / architectural" [shape=diamond];
     "Present question + probe (2-3 sentences)" [shape=box];
-    "Ask clarifying questions (bounded)" [shape=box];
+    "One frontier round (bounded)" [shape=box];
     "Present short design in chat" [shape=box];
     "Human approves?" [shape=diamond];
     "Investigate; report recommendation" [shape=doublecircle];
     "Implement via normal workflow (no plan doc)" [shape=doublecircle];
     "Explore project context" [shape=box];
-    "Ask clarifying questions" [shape=box];
+    "Frontier rounds until empty" [shape=box];
     "Propose 2-3 approaches" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
@@ -127,16 +128,16 @@ digraph brainstorming {
     "Hidden complexity? Upgrade path" [shape=box];
 
     "Classify: spike / bounded / architectural" -> "Present question + probe (2-3 sentences)" [label="spike"];
-    "Classify: spike / bounded / architectural" -> "Ask clarifying questions (bounded)" [label="bounded"];
+    "Classify: spike / bounded / architectural" -> "One frontier round (bounded)" [label="bounded"];
     "Classify: spike / bounded / architectural" -> "Explore project context" [label="architectural"];
     "Present question + probe (2-3 sentences)" -> "Human approves?";
-    "Ask clarifying questions (bounded)" -> "Present short design in chat";
+    "One frontier round (bounded)" -> "Present short design in chat";
     "Present short design in chat" -> "Human approves?";
     "Human approves?" -> "Investigate; report recommendation" [label="spike: yes"];
     "Human approves?" -> "Implement via normal workflow (no plan doc)" [label="bounded: yes"];
     "Hidden complexity? Upgrade path" -> "Classify: spike / bounded / architectural";
-    "Explore project context" -> "Ask clarifying questions";
-    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Explore project context" -> "Frontier rounds until empty";
+    "Frontier rounds until empty" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];
@@ -153,8 +154,8 @@ invoke after brainstorming is writing-plans — never frontend-design,
 mcp-builder, or any other implementation skill. A chat yes/oui validates
 the design only. After that yes, the session enters Plan mode: you MUST
 `load_skill` writing-plans, then call `create_plan` using the agreed design
-from this conversation. Do not reload brainstorming. Do not restart the
-question loop. Implementation starts only when the human clicks Build.
+from this conversation. Do not reload brainstorming. Do not restart
+frontier rounds. Implementation starts only when the human clicks Build.
 Bounded: after approval, write the plan with `create_plan` — do not
 start coding because the user said yes in chat. Spike: the terminal
 state is a reported recommendation.
@@ -164,18 +165,43 @@ state is a reported recommendation.
 The subsections below serve the bounded and architectural paths (a
 spike stops at "present the probe, get a nod"). Sections from
 **Exploring approaches** onward are architectural-path depth — for
-bounded work, context plus a few questions plus a short in-chat design
+bounded work, context plus one frontier round plus a short in-chat design
 is the whole process.
+
+**Frontier rounds:**
+
+Map the idea as a **design tree**: every decision branches into the decisions that hang off it. Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled — the questions you can ask now without guessing at an answer you have not heard yet.
+
+One round is one `ask_user_question` with `kind: "question"`. The prompt is a matrix the question panel already renders. At least two rows, at least two letters on each row. Mark the recommended letter with `(recommandé)`. Wait for the answers before the next round.
+
+```
+Choose one option per row.
+
+1. <decision title>:
+- A: <option> (recommandé)
+- B: <option>
+
+2. <decision title>:
+- A: <option>
+- B: <option> (recommandé)
+```
+
+A question whose answer depends on another question still open in this round belongs to a later round, not this one.
+
+Finding facts is your job, never the user's. Files, code, and docs go to `explore` subagents. A running exploration is an unsettled prerequisite: only the questions downstream of it wait; ask the rest of the frontier now. The decisions stay with the user.
+
+The question loop is done when the frontier is empty: every branch visited, nothing left silently assumed. Then present the design. Do not act until the human confirms a shared understanding with yes/oui. After that yes, do not start another round.
+
+- **Spike** — no frontier round. Two or three sentences, a nod, then the finding.
+- **Bounded** — one round on the decisions that matter, then the short in-chat design, then yes.
+- **Architectural** — rounds until the frontier is empty, then 2–3 approaches, the sectioned design, the spec, then writing-plans.
 
 **Understanding the idea:**
 
 - Check out the current project state first (files, docs, recent commits)
-- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
+- Before the first round, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend rounds refining details of a project that needs to be decomposed first.
 - If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
-- For appropriately-scoped projects, ask questions one at a time to refine the idea
-- Prefer multiple choice questions when possible, but open-ended is fine too
-- Only one question per message - if a topic needs more exploration, break it into multiple questions
-- Focus on understanding: purpose, constraints, success criteria
+- Focus each frontier on purpose, constraints, and success criteria
 
 **Exploring approaches:**
 

@@ -15,16 +15,7 @@ The Testing Engine decides how this project is tested. You write the tests. The 
 
 ## Unit cycle
 
-For each behavior:
-
-1. Name the behavior, including a boundary, an invalid input, or an error path. Do not stop at the happy path.
-2. Write a failing test (Arrange, Act, Assert). Keep it isolated and deterministic.
-3. Run the unit suite and read the failure.
-4. Implement the smallest change that makes it pass.
-5. Run the unit suite again.
-6. Refactor only while the suite stays green.
-
-A bug fix starts with a regression test that fails before the fix.
+Follow `test-driven-development` for each behavior: one public seam, a failing test, then the minimum code, with RED and GREEN evidence from the runner this strategy names. A bug fix starts with a regression test that fails before the fix.
 
 ## After the implementation
 

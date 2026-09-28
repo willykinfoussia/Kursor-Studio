@@ -782,8 +782,7 @@ function ensureFiletForSkill(state: BinderState, skillId: string, event: AgentRu
     "subagent-driven-planning",
     "executing-plans",
     "test-driven-development",
-    "requesting-code-review",
-    "receiving-code-review",
+    "code-review",
     "verification-before-completion",
     "finishing-a-development-branch",
   ]);

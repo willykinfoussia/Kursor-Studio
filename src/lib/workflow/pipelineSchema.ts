@@ -293,8 +293,8 @@ export const PIPELINE_TEMPLATE_NODES: PipelineTemplateNode[] = [
     skillId: "test-driven-development",
     typicalTools: ["run_command"],
   }, HEADER_Y + 80),
-  processPhase(PIPELINE_IDS.review, "review", "Review", "requesting-code-review / receiving-code-review. Optional; not a per-task subagent loop.", 1700, {
-    skillId: "requesting-code-review",
+  processPhase(PIPELINE_IDS.review, "review", "Review", "code-review. Once at the end of the branch, before verification. Not a per-task subagent loop.", 1700, {
+    skillId: "code-review",
     typicalTools: ["agent"],
   }, HEADER_Y + 240),
   processPhase(PIPELINE_IDS.verificationBeforeCompletion, "verification", "VBC", "verification-before-completion after every plan todo. Then the harness runs the full check suite.", 1820, {
@@ -560,8 +560,7 @@ export const PROCESS_SKILL_PHASE: Record<string, string> = {
   "subagent-driven-planning": PIPELINE_IDS.planResearch,
   "executing-plans": PIPELINE_IDS.executingPlans,
   "test-driven-development": PIPELINE_IDS.tdd,
-  "requesting-code-review": PIPELINE_IDS.review,
-  "receiving-code-review": PIPELINE_IDS.review,
+  "code-review": PIPELINE_IDS.review,
   "verification-before-completion": PIPELINE_IDS.verificationBeforeCompletion,
   "finishing-a-development-branch": PIPELINE_IDS.finishing,
 };
@@ -578,7 +577,7 @@ export const TOOL_PHASE: Record<string, string> = {
 
 export function processSkillForSubagent(agentId: string, preferPlanResearch = false): string {
   if (agentId === "implement") return "executing-plans";
-  if (agentId === "review") return "requesting-code-review";
+  if (agentId === "review") return "code-review";
   if (preferPlanResearch) return "subagent-driven-planning";
   return "subagent-driven-brainstorming";
 }

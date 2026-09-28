@@ -115,8 +115,7 @@ Porter les skills Superpowers (corps Markdown, mapping tools Kursor à part — 
 | `subagent-driven-brainstorming`  | Explore avant le design                             |
 | `subagent-driven-planning`       | Explore avant create_plan                           |
 | `dispatching-parallel-agents`    | Fan-out sous-agents indépendants                    |
-| `requesting-code-review`         | Review vs plan, critical bloque                     |
-| `receiving-code-review`          | Traiter un review (pas d’acquiescement performatif) |
+| `code-review`                    | Standards + Spec, une fois en fin de branche ; critical bloque |
 | `using-git-worktrees`            | Branche in-place après Build (`git_branch`)         |
 | `finishing-a-development-branch` | Merge local obligatoire ; conflits listés           |
 
@@ -238,7 +237,7 @@ Le nœud `CHK` n’est **pas** un LLM de classification d’intention Kursor. C�
 | Spike                                | Throwaway only                                   | Reco ; pas de feat commit                                                             |
 | « Fix ce bug »                       | Après phase 1 debug                              | `systematic-debugging` puis TDD                                                       |
 | Plan mode UI                         | Pas de source edits                              | Seulement **après** brainstorm si pas déjà fait                                       |
-| Critical review                      | Bloque la tâche suivante                         | `requesting-code-review`                                                              |
+| Critical review                      | Bloque la tâche suivante                         | `code-review`                                                                         |
 | Fin                                  | Verify + merge local                             | `finishing-a-development-branch`                                                      |
 
 
@@ -302,7 +301,7 @@ Défaut **après un plan** : **executing-plans**. Les sous-agents `explore` serv
 | Explore / brainstorm     | LLM-001-SUB, `explore-prompt.md`                                      |
 | Explore / plan           | LLM-001-SUB, `explore-prompt.md`                                      |
 | Implementer (optionnel)  | LLM-001-SUB, prompt `implementer-prompt.md`, TDD                      |
-| Review branche           | `requesting-code-review` (optionnel)                                  |
+| Review branche           | `code-review` (une fois, avant verification)                          |
 | Parallel            | `dispatching-parallel-agents` si tâches indépendantes                 |
 
 
@@ -404,7 +403,7 @@ writing-plans (Plan mode) puis Build humain
 git_branch in-place (éditeur + panneau Git)
 architectural → SDD (implementer+reviewer / tâche)
   TDD dans chaque implementer
-  requesting-code-review entre tâches ; critical bloque
+  code-review une fois en fin de branche, avant verification ; critical bloque
   finishing-a-development-branch (merge checkout base, conflits listés)
 bounded → TDD dans le parent, pas de plan fichier
 0 Write avant yes

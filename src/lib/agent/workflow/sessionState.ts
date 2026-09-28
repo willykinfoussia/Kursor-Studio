@@ -530,8 +530,7 @@ export const SUPERPOWERS_PROCESS_SKILL_IDS = [
   "test-driven-development",
   "systematic-debugging",
   "verification-before-completion",
-  "requesting-code-review",
-  "receiving-code-review",
+  "code-review",
   "finishing-a-development-branch",
   "writing-skills",
 ] as const;

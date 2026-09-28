@@ -5,7 +5,7 @@ description: Use during brainstorming, before presenting a design — dispatch e
 
 # Subagent-Driven Brainstorming
 
-Use isolated **explore** subagents to research the repo before you present a design. You stay the coordinator: classify the path, ask clarifying questions, then dispatch research — do not dump the whole session into a child.
+Use isolated **explore** subagents to settle facts on the design-tree frontier before you present a design. You stay the coordinator: classify the path, dispatch research, then ask the human for decisions — do not dump the whole session into a child. Facts are never questions for the user. A running exploration blocks only the frontier questions that depend on it.
 
 **Announce at start:** "I'm using subagent-driven-brainstorming to research before the design."
 
@@ -18,10 +18,9 @@ Fresh read-only context. The child never inherits chat history. You hand it a sh
 ## Process
 
 1. Classify the request (spike / bounded / architectural) using brainstorming.
-2. Ask only the clarifying questions that unblock research.
-3. Dispatch at least two `explore` subagents with the template in `explore-prompt.md`. Independent questions run in parallel (`dispatching-parallel-agents`). A single spawn is rejected.
-4. Read the findings. Do not treat a child summary as a design — you still write the design and wait for yes/oui.
-5. Present the design. Use `ask_user_question` `kind: "design"` only after research returned.
+2. Dispatch at least two `explore` subagents with the template in `explore-prompt.md` to settle facts the frontier depends on. Independent lookups run in parallel (`dispatching-parallel-agents`). A single spawn is rejected.
+3. Read the findings. Do not treat a child summary as a decision or a design — decisions stay with the human, in frontier rounds.
+4. Present the design once the frontier is empty. Use `ask_user_question` `kind: "design"` only after research returned.
 
 ## Dispatch rules
 

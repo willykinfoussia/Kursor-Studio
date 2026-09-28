@@ -724,7 +724,7 @@ Règle 1 % : invoquer un skill pertinent (ou `check_skills` si aucun) **avant** 
 
 ```text
 brainstorming → HARD-GATE yes → writing-plans → Build → using-git-worktrees (git_branch)
-  → SDD ou executing-plans → TDD → requesting-code-review → finishing-a-development-branch
+  → SDD ou executing-plans → TDD → code-review → finishing-a-development-branch
 ```
 
 Branche V1 = `git_branch` **in-place** après Build (l’éditeur et le panneau Git suivent le checkout).

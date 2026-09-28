@@ -29,7 +29,7 @@ export function buildPromptForPlan(plan: PlanDocument): string {
     "Then load_skill test-driven-development before writing implementation code.",
     "Then load_skill using-git-worktrees. If git_status is dirty, git_commit then git_push if origin exists, then git_branch create in the open checkout before mutating files. Do not create .worktrees/. Do not stash.",
     "Do not end the turn while plan todos remain pending or in_progress. After completing a todo, start the next one immediately.",
-    "When every todo is complete, load_skill verification-before-completion before finish_development_branch.",
+    "When every todo is complete, load_skill code-review, then load_skill verification-before-completion before finish_development_branch.",
     "",
     "Rules:",
     "1. Follow the plan body below. Read extra files only as the current todo requires.",

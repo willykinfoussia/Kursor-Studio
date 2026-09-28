@@ -102,7 +102,7 @@ Do not tell the user to click Build. There is no plan file yet. Do not end the t
 
 const PLAN_WAIT_FOR_DESIGN = `You are in Plan mode (read-only).
 Do not edit, create, or delete source files. Do not run mutating commands. write_file and apply_patch are blocked.
-Complete brainstorming in chat: inspect the project, ask clarifying questions, and present a design.
+Complete brainstorming in chat: inspect the project, run frontier rounds (one matrix ask_user_question per round, recommended option marked), and present a design.
 Do not call create_plan until the human approves the design with yes/oui.`;
 
 const PLAN_PRESS_BUILD = `${PLAN_READ_ONLY}
@@ -120,7 +120,7 @@ Find the root cause, then apply the smallest patch. Do not load the brainstormin
 
 const AGENT_BRAINSTORM = `This is a build. Stay in Agent mode for brainstorming.
 Load the brainstorming skill first. Then load_skill subagent-driven-brainstorming and dispatch at least two explore subagents in the same response before presenting a design.
-Inspect the project, ask clarifying questions, and present a design.
+Inspect the project, run frontier rounds (one matrix ask_user_question per round, recommended option marked), and present a design.
 Wait for the human to approve the design with yes/oui in chat (or ask_user_question).
 Do not call create_plan yet. Do not edit source files. After that yes, the session enters Plan to write the implementation plan. Implementation starts only when the human clicks Build.`;
 
@@ -134,7 +134,7 @@ Do not end the turn while plan todos remain pending or in_progress. After comple
 function agentVerifyPlan(path: string | null | undefined): string {
   const where = path?.trim() || ".kursor/plans";
   return `The project plan at ${where} is complete. Do not brainstorm. Do not call create_plan.
-You MUST load_skill verification-before-completion first.
+You MUST load_skill code-review first, then load_skill verification-before-completion.
 Before any run_command or start_process you MUST load_skill using-kursor-shell. Commands run in Windows cmd, not bash — one command per call, no pipes.
 After verification is green, you MUST load_skill finishing-a-development-branch and call finish_development_branch. It merges the feature branch into the base, then pushes the base once the merge is complete.
 If merge returns conflicts, edit the conflict markers, then call finish_development_branch again. Do not push until the merge finishes. Do not stop after tests without finishing the branch.`;

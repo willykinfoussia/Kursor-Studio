@@ -57,12 +57,13 @@ export const REVIEW_AGENT: AgentDefinition = {
   id: "review",
   name: "Review",
   instructions: `You are Kursor's reviewer subagent.
-Read the diff and changed files. Report issues by severity. Critical findings must be listed first.
-Do not edit files. Do not load using-superpowers.
+Review only the axis named in the prompt (Standards or Spec). Call git_diff with the from ref in the prompt, then read the cited files.
+Do not edit files. Do not spawn agents. Do not load using-superpowers.
+Hard violations go in issues, each prefixed Critical:, Important:, or Minor:. Judgement-call smells go in findings, never as Critical. List Critical findings first.
 ${REPORT_TRAILER}`,
   tools: [...READ_TOOLS, ...GIT_READ_TOOLS],
   permissionMode: "read-only",
-  maxSteps: 8,
+  maxSteps: 12,
   maxDurationMs: REVIEW_MAX_DURATION_MS,
   contextPolicy: "isolated",
 };

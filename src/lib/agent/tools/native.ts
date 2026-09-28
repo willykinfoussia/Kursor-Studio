@@ -21,7 +21,7 @@ export interface AgentProcessService {
 
 export interface AgentGitService {
   status(): Promise<{ branch: string; changedFiles: string[]; clean: boolean }>;
-  diff(path?: string): Promise<{ path?: string | null; diff: string }>;
+  diff(path?: string, from?: string): Promise<{ path?: string | null; diff: string }>;
   commit(input: { message: string; paths?: string[]; push?: boolean }): Promise<{ committed: true; pushed: boolean }>;
   push(): Promise<void>;
   pull(): Promise<void>;

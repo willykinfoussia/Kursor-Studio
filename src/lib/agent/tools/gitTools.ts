@@ -6,6 +6,17 @@ import { asRecord, toolSchema } from "./schema";
 import { isFailure, optionalRelativeDirectory, requireProjectRoot, requiredRelativePath } from "./paths";
 import { ensureBranchForPush } from "./gitBranch";
 
+function optionalGitFrom(input: unknown): string | undefined | ToolResult {
+  const raw = asRecord(input).from;
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  if (typeof raw !== "string") return failResult("invalid_input", "from must be a git ref.");
+  const from = raw.trim();
+  if (!from || from.startsWith("-") || /[\s\0]/.test(from)) {
+    return failResult("invalid_input", "from must be a git ref such as main...HEAD.");
+  }
+  return from;
+}
+
 function optionalPaths(input: unknown, projectRoot: string): string[] | ToolResult {
   const raw = asRecord(input).paths;
   if (raw === undefined || raw === null) return [];
@@ -44,21 +55,26 @@ export function createGitStatusTool(deps: { git: AgentGitService }): AgentTool {
 export function createGitDiffTool(deps: { git: AgentGitService }): AgentTool {
   return {
     name: "git_diff",
-    description: "Read a git diff for the open project. Optional path is relative to the project root.",
+    description: "Read a git diff for the open project. Optional path is relative to the project root. Optional from is a git ref passed through as-is, such as main...HEAD for a three-dot diff against the merge-base.",
     ...toolPermission("git.read", "low"),
     timeoutMs: 15_000,
     mutate: false,
     parameters: toolSchema({
       path: { type: "string", description: "Optional file or directory relative to the project root" },
+      from: { type: "string", description: "Optional git ref passed through as-is. Use base...HEAD for a three-dot diff against the merge-base." },
     }),
     async execute(input, ctx) {
       const root = requireProjectRoot(ctx.projectRoot);
       if (isFailure(root)) return root;
       const path = optionalRelativeDirectory(input, "path", root);
       if (isFailure(path)) return path;
+      const from = optionalGitFrom(input);
+      if (isFailure(from)) return from;
       try {
-        const diff = await deps.git.diff(path || undefined);
-        return okResult({ path: path || null, diff: diff.diff });
+        const diff = from
+          ? await deps.git.diff(path || undefined, from)
+          : await deps.git.diff(path || undefined);
+        return okResult({ path: path || null, ...(from ? { from } : {}), diff: diff.diff });
       } catch (error) {
         return toToolFailure(error);
       }

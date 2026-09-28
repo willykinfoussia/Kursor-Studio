@@ -18,7 +18,7 @@ export const nativeProcessService: AgentProcessService = {
 
 export const nativeGitService: AgentGitService = {
   status: () => projectApi.gitStatus(),
-  diff: (path) => projectApi.gitDiff(path),
+  diff: (path, from) => (from ? projectApi.gitDiffAt({ path, from }) : projectApi.gitDiff(path)),
   async commit({ message, paths, push }) {
     if (paths && paths.length > 0) await gitApi.addPaths(paths);
     else await gitApi.add();

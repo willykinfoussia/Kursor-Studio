@@ -17,6 +17,51 @@ Strict TDD produces both naturally: a test written first and watched
 failing against real code has already proven it can fail, and only earns
 a mock when the real dependency proves slow or external.
 
+## Seams
+
+A seam is the public boundary you test at: the interface a caller uses.
+Tests live at seams.
+
+- Test observable behavior through that interface.
+- Do not test private methods.
+- Do not mock your own classes or internal collaborators.
+- Do not verify through a side channel the interface does not expose.
+
+```typescript
+// GOOD: behavior callers care about
+test("user can checkout with valid cart", async () => {
+  const cart = createCart();
+  cart.add(product);
+  const result = await checkout(cart, paymentMethod);
+  expect(result.status).toBe("confirmed");
+});
+
+// BAD: mocks an internal collaborator and asserts the call
+test("checkout calls paymentService.process", async () => {
+  const mockPayment = jest.mock(paymentService);
+  await checkout(cart, payment);
+  expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
+});
+```
+
+```typescript
+// BAD: side channel — the test breaks when storage changes and behavior does not
+test("createUser saves to database", async () => {
+  await createUser({ name: "Alice" });
+  const row = await db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
+  expect(row).toBeDefined();
+});
+
+// GOOD: read back through the public interface
+test("createUser makes user retrievable", async () => {
+  const user = await createUser({ name: "Alice" });
+  const retrieved = await getUser(user.id);
+  expect(retrieved.name).toBe("Alice");
+});
+```
+
+The tell of a seam violation: the test breaks when you refactor and the behavior has not changed.
+
 ## Principle 1: Name the Break
 
 Before writing the test body, answer: **what production change should
@@ -96,6 +141,16 @@ expect(screen.getByTestId('sidebar-mock')).toBeInTheDocument();
 **your human partner's correction:** "Are we testing the behavior of a
 mock?"
 
+**Mock at system boundaries only.** External APIs, time, randomness, and
+the file system. Prefer a real test database over a mocked one. Do not
+mock modules you own.
+
+At those boundaries, pass the client in instead of constructing it
+inside the function, and expose one function per external operation.
+A generic `fetch(endpoint, options)` forces conditional logic inside
+the mock. Call counts and argument order are part of the contract only
+for that injected boundary — never for an internal collaborator.
+
 **Mock at the right level.** Learn every side effect of the real method
 before replacing it; mock the slow or external operation and keep what
 the test depends on real. When unsure, run the test against the real
@@ -173,6 +228,8 @@ test as tautological.
 | When you... | Do |
 |-------------|-----|
 | Write any test | Name the break it catches — a bug, not a decision |
+| Choose where to test | Public seam; not private methods or internal mocks |
+| Verify a write | Read it back through the public interface |
 | Build an expected value | Derive it by hand; never with the code under test |
 | Test a script or document | Run it / pressure-test its consumer; never grep its text |
 | Reach for a dependency test | Test your boundary contract, not their documented mechanics |
@@ -185,6 +242,8 @@ test as tautological.
 
 ## Warning Signs
 
+- The test breaks on a refactor when the behavior did not change
+- An assertion queries storage the public interface does not expose
 - Setup and assertion share the same object, guaranteeing equality
 - The test can fail only through a panic, crash, or missing selector
 - The test fails on every intentional change, never on accidental breakage
