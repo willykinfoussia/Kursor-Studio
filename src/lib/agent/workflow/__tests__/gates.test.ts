@@ -1,6 +1,8 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { usePlanStore } from "../../../../stores/planStore";
 import { createPlanDocument } from "../../plans/planFile";
+import { modeSystemOverlay } from "../../modes";
+import { isBuildPlanPrompt } from "../../plans/isBuildPlanPrompt";
 import { WorkflowSessionState, shouldCloseImplementationCycle } from "../sessionState";
 import { turnVerdict } from "../../workflows/turnClassifier";
 import {
@@ -267,16 +269,18 @@ describe("HARD-GATE", () => {
     expect(gate.decision).toBe("deny");
   });
 
-  it("allows a patch after systematic-debugging when a visual bug was classified as a build", () => {
-    const blocked = session({ skillCheckThisTurn: true, goalKind: "build" });
-    const denied = evaluateWorkflowGate("apply_patch", { path: "frontend/src/main.tsx" }, true, blocked);
+  it("patches a bug after systematic-debugging and keeps a build behind the design gate", () => {
+    const bug = session({ skillCheckThisTurn: true, goalKind: "bug" });
+    bug.markSkillCheck("systematic-debugging");
+    expect(bug.goalKind).toBe("bug");
+    expect(evaluateWorkflowGate("apply_patch", { path: "frontend/src/main.tsx" }, true, bug).decision).toBe("allow");
+
+    const build = session({ skillCheckThisTurn: true, goalKind: "build" });
+    build.markSkillCheck("systematic-debugging");
+    expect(build.goalKind).toBe("build");
+    const denied = evaluateWorkflowGate("apply_patch", { path: "frontend/src/main.tsx" }, true, build);
     expect(denied.decision).toBe("deny");
     if (denied.decision === "deny") expect(denied.reason).toMatch(/HARD-GATE/);
-
-    const next = session({ skillCheckThisTurn: true, goalKind: "build" });
-    next.markSkillCheck("systematic-debugging");
-    expect(next.goalKind).toBe("bug");
-    expect(evaluateWorkflowGate("apply_patch", { path: "frontend/src/main.tsx" }, true, next).decision).toBe("allow");
   });
 
   it("does not leave a build when brainstorming is already loaded", () => {
@@ -954,7 +958,7 @@ describe("workflow session reset", () => {
     expect(next.goalKind).toBe("build");
   });
 
-  it("does not close while plan todos remain", () => {
+  it("closes an open plan when the next request is new", () => {
     const next = session({
       planApproved: true,
       planPath: ".kursor/plans/demo.plan.md",
@@ -963,11 +967,72 @@ describe("workflow session reset", () => {
       goalKind: "build",
     });
     const plan = { status: "building", todos: [{ status: "completed" }, { status: "pending" }] };
-    expect(shouldCloseImplementationCycle(next, plan)).toBe(false);
-    next.beginUserTurn("also persist the cart", { cycleIdle: false });
+    expect(shouldCloseImplementationCycle(next, plan, false, "none")).toBe(true);
+    next.beginUserTurn("le bouton ne marche pas et améliore le site", {
+      cycleIdle: true,
+      verdict: turnVerdict({ goalKind: "build", complexity: "medium", continuation: "new", reply: "none" }),
+    });
+    expect(next.planApproved).toBe(false);
+    expect(next.designApproved).toBeNull();
+    expect(next.invokedSkillIds).toEqual([]);
+    const overlay = modeSystemOverlay("agent", next);
+    expect(overlay).toMatch(/Load the brainstorming skill first/);
+    expect(overlay).not.toMatch(/executing-plans/i);
+  });
+
+  it("keeps approvals when the turn is the Build prompt", () => {
+    const next = session({
+      planApproved: true,
+      planPath: ".kursor/plans/demo.plan.md",
+      designApproved: { scope: "x", at: 1 },
+      invokedSkillIds: ["writing-plans"],
+      goalKind: "build",
+    });
+    const prompt = 'Build the approved plan "Sidebar" at .kursor/plans/demo.plan.md.';
+    const plan = { status: "approved", todos: [{ status: "pending" }] };
+    const continuing = isBuildPlanPrompt(prompt);
+    expect(continuing).toBe(true);
+    expect(shouldCloseImplementationCycle(next, plan, continuing, "none")).toBe(false);
+    next.beginUserTurn(prompt, {
+      cycleIdle: false,
+      verdict: turnVerdict({ goalKind: "build", complexity: "medium", continuation: "new", reply: "none" }),
+    });
+    expect(next.planApproved).toBe(true);
+    expect(next.designApproved).toBeTruthy();
+    expect(next.planPath).toBe(".kursor/plans/demo.plan.md");
+    expect(modeSystemOverlay("agent", next)).toMatch(/executing-plans/i);
+    expect(modeSystemOverlay("agent", next)).not.toMatch(/Load the brainstorming skill first/);
+  });
+
+  it("keeps an open plan when the user continues it", () => {
+    const next = session({
+      planApproved: true,
+      planPath: ".kursor/plans/demo.plan.md",
+      designApproved: { scope: "x", at: 1 },
+      invokedSkillIds: ["executing-plans", "test-driven-development"],
+      goalKind: "build",
+    });
+    const plan = { status: "building", todos: [{ status: "pending" }] };
+    expect(shouldCloseImplementationCycle(next, plan, true, "none")).toBe(false);
+    next.beginUserTurn("also persist the cart", {
+      cycleIdle: false,
+      verdict: turnVerdict({ continuation: "continue", goalKind: "build" }),
+    });
     expect(next.planApproved).toBe(true);
     expect(next.planPath).toBe(".kursor/plans/demo.plan.md");
     expect(next.invokedSkillIds).toEqual(["executing-plans", "test-driven-development"]);
+    expect(modeSystemOverlay("agent", next)).toMatch(/executing-plans/i);
+  });
+
+  it("does not close when the message approves or rejects the design", () => {
+    const next = session({
+      planApproved: true,
+      planPath: ".kursor/plans/demo.plan.md",
+      designApproved: { scope: "x", at: 1 },
+      goalKind: "build",
+    });
+    expect(shouldCloseImplementationCycle(next, null, false, "design_yes")).toBe(false);
+    expect(shouldCloseImplementationCycle(next, null, false, "design_no")).toBe(false);
   });
 
   it("does not close the cycle when skipProcess is set", () => {
@@ -980,12 +1045,13 @@ describe("workflow session reset", () => {
     expect(shouldCloseImplementationCycle(next, { status: "done", todos: [{ status: "completed" }] }, false)).toBe(false);
   });
 
-  it("does not close before the current plan is loaded", () => {
+  it("closes an approved plan that is missing from the store", () => {
     const next = session({
       planApproved: true,
       planPath: ".kursor/plans/demo.plan.md",
+      designApproved: { scope: "x", at: 1 },
     });
-    expect(shouldCloseImplementationCycle(next, null)).toBe(false);
+    expect(shouldCloseImplementationCycle(next, null, false, "none")).toBe(true);
   });
 
   it("closes a completed cycle even when the plan document is missing", () => {

@@ -227,6 +227,12 @@ describe("plan tools", () => {
     expect(planBodyInvalidReason(body, ["Do A", "Do B"])).toBeNull();
   });
 
+  it("ignores a Build process note when checking the plan body", () => {
+    const processNote = "Oui, continuer le plan existant — je clique sur Build pour l'approuver";
+    expect(designNotesInvalidReason("Sidebar", richPlanBody(), [processNote, "localStorage"])).toMatch(/localStorage/);
+    expect(designNotesInvalidReason("Sidebar", `${richPlanBody()}\nlocalStorage`, [processNote])).toBeNull();
+  });
+
   it("rejects a create_plan body that omits approved design notes", async () => {
     const { fs } = memoryFs();
     const { session, ctx } = context();

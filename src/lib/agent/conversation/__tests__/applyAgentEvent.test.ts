@@ -179,6 +179,25 @@ describe("applyAgentEvent", () => {
     });
   });
 
+  it("replaces a review summary when the same change set completes again", () => {
+    const first = {
+      type: "review-completed" as const,
+      projectId: "p",
+      runId: "r1",
+      changeSetId: "cs1",
+      accepted: 16,
+      rejected: 0,
+      partial: 0,
+      conflicted: 0,
+    };
+    const items = reduce([
+      { type: "started", requestId: "r1", messageId: "a1", model: "m", userMessage: user },
+      first,
+      { ...first, accepted: 16, rejected: 0 },
+    ]);
+    expect(items.filter((item) => item.type === "review-summary")).toHaveLength(1);
+  });
+
   it("appends a knowledge proposal card when the reflector finishes", () => {
     const empty = reduce([
       { type: "started", requestId: "r1", messageId: "a1", model: "m", userMessage: user },

@@ -45,8 +45,8 @@ const QUESTIONS = {
     instructions: "What kind of user request is this? Use the previous goal only when this message continues that same effort.",
     criteria: {
       explain: "A question about existing code or the project. No change is requested.",
-      bug: "Something already built is wrong and needs a diagnosis before a patch: a crash, a failing test, incorrect behavior, or a UI that renders without its styles (blank page, raw text, native buttons). A report that CSS or layout is not applied is a bug, not a new design.",
-      build: "New behavior or a change whose shape is not fully specified. It needs a design before code. A report that existing behavior is broken is not a build.",
+      bug: "The message only asks to fix a defect that is already built: a crash, a failing test, incorrect behavior, or a UI that renders without its styles (blank page, raw text, native buttons). A report that CSS or layout is not applied is a bug, not a new design. A defect together with new behavior or an improvement is not a bug.",
+      build: "New behavior, an improvement, or a change whose shape is not fully specified, including a defect reported together with an improvement. It needs a design before code, even when this conversation already has a plan. A report that only says existing behavior is broken is not a build.",
       other: "Anything else, including a direct action that names its target.",
     },
   },
@@ -81,8 +81,8 @@ const QUESTIONS = {
     type: "choice" as const,
     instructions: "Is this message resuming work already in progress, or starting something new?",
     criteria: {
-      continue: "Finish, verify, or otherwise resume the current plan or implementation. Not a new feature.",
-      new: "A new request, or a message that is not resuming current work.",
+      continue: "Finish, verify, or otherwise resume the current plan or implementation. Not a new feature, and not a bugfix together with an improvement.",
+      new: "A new request, including a bugfix together with an improvement, or any message that is not resuming the current plan.",
     },
   },
   modelTask: {

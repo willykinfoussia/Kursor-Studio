@@ -66,6 +66,35 @@ describe("review service", () => {
     expect(result.changeSet.status).toBe("accepted");
   });
 
+  it("accepts one rewritten file by writing the AI version", async () => {
+    const { store, files } = memoryFiles({ "a.ts": "old\n" });
+    const tracking = new ChangeTrackingService({ files, id: () => "cs1", now: () => 1 });
+    await trackWrite(tracking, files, "a.ts", "ai\n");
+    store["a.ts"] = "human\r\n";
+    await tracking.finalizeRun("run-1");
+    const review = new ReviewService({ files, tracking, id: () => "d1", now: () => 2 });
+    const fileId = tracking.get("cs1")!.files[0]!.id;
+    const result = await review.acceptFile("cs1", fileId);
+    expect(result.ok).toBe(true);
+    expect(store["a.ts"]).toBe("ai\n");
+    expect(result.changeSet.files[0]?.status).toBe("accepted");
+  });
+
+  it("treats a CRLF copy of the proposal as the same file", async () => {
+    const { store, files } = memoryFiles({ "a.ts": "old\n" });
+    const tracking = new ChangeTrackingService({ files, id: () => "cs1", now: () => 1 });
+    await trackWrite(tracking, files, "a.ts", "ai\n");
+    store["a.ts"] = "ai\r\n";
+    await tracking.finalizeRun("run-1");
+    const review = new ReviewService({ files, tracking, id: () => "d1", now: () => 2 });
+    const fileId = tracking.get("cs1")!.files[0]!.id;
+    const result = await review.acceptFile("cs1", fileId);
+    expect(result.ok).toBe(true);
+    expect(result.changeSet.files[0]?.status).toBe("accepted");
+    const refreshed = await review.refreshHashes(result.changeSet);
+    expect(refreshed.files[0]?.status).toBe("accepted");
+  });
+
   it("accepts all by writing the AI version over a human edit", async () => {
     const { store, files } = memoryFiles({ "a.ts": "old\n" });
     const persist = new MemoryChangeStore();

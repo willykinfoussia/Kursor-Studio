@@ -78,8 +78,24 @@ describe("ask_user_question", () => {
     expect(session.designApproved).toBeTruthy();
     expect(session.planApproved).toBe(false);
     expect(session.interactionMode).toBe("plan");
+    expect(session.designBrief).toBeNull();
     expect(session.designNotes).toEqual([]);
     expect(events.some((event) => event.type === "design-gate")).toBe(true);
+  });
+
+  it("stores the presented design as the brief when a design question is approved", async () => {
+    const session = new WorkflowSessionState();
+    session.goalKind = "build";
+    session.markSkillCheck("brainstorming");
+    const harness = mockHarness(session, { selected: "oui", allow: true, reply: "design_yes" });
+    harness.latestAssistantText = () => "Sidebar with a persistent cart and port 3002.";
+    const tool = createAskUserQuestionTool();
+    await tool.execute(
+      { prompt: "Ce design vous convient ?", kind: "design", options: ["oui", "non"] },
+      idleToolContext("C:/Projects/TodoApp", { harness }),
+    );
+    expect(session.designApproved).toBeTruthy();
+    expect(session.designBrief).toBe("Sidebar with a persistent cart and port 3002.");
   });
 
   it("records designApproved on Yes, proceed even when the other option is Changes needed", async () => {

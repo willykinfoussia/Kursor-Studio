@@ -259,6 +259,7 @@ export class AgentRuntime {
   private lastRunId: string | null = null;
   private lastMessageId: string | null = null;
   private busy = false;
+  private turnAssistantText = "";
   private workflowContext: WorkflowContext | null = null;
   private lastGoal: string | null = null;
   private readonly recovery: RecoveryManager;
@@ -509,6 +510,10 @@ export class AgentRuntime {
   }
 
   private emit(event: AgentEvent) {
+    if (event.type === "assistant-message" && !event.agentId && event.text.trim()) {
+      const text = event.text.trim();
+      this.turnAssistantText = this.turnAssistantText ? `${this.turnAssistantText}\n\n${text}` : text;
+    }
     this.tracer.ingest(event);
     this.listeners.forEach((listener) => listener(event));
     const checkpoint = this.recovery.checkpoint;
@@ -607,6 +612,7 @@ export class AgentRuntime {
     const text = content.trim();
     if (!text || this.controller || this.busy) return;
     this.busy = true;
+    this.turnAssistantText = "";
     this.lastGoal = text;
     const resume = options.resume === true;
     if (!options.retry) {
@@ -684,10 +690,16 @@ export class AgentRuntime {
         ? SAFE_TURN_VERDICT
         : await classifyTurn(this.aiService, this.turnClassifierInput(text));
       bindContinuingProjectPlan(this.workflowSession, verdict.continuation === "continue");
+      const designPending = this.workflowSession.goalKind === "build" && !this.workflowSession.designApproved;
+      let reply = verdict.reply;
+      if (designPending && reply !== "design_no" && explicitDesignYes(text)) {
+        reply = "design_yes";
+      }
       const cycleIdle = shouldCloseImplementationCycle(
         this.workflowSession,
         this.sessionPlan(),
-        verdict.continuation === "continue",
+        verdict.continuation === "continue" || isBuildPlanPrompt(text),
+        reply,
       );
       const chatApprovals = this.workflowSession.beginUserTurn(text, { cycleIdle, verdict });
       this.emit({
@@ -1256,6 +1268,7 @@ export class AgentRuntime {
       ensureAgentBranch: (input) => this.ensureAgentBranch(input),
       finishBranch: (input) => this.finishBranch(input),
       compactNow: () => this.applyCompact("manual"),
+      latestAssistantText: () => this.turnAssistantText,
     };
   }
 

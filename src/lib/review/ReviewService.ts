@@ -96,8 +96,9 @@ export class ReviewService {
   async refreshHashes(changeSet: AiChangeSet) {
     const next = cloneChangeSet(changeSet);
     for (const file of next.files) {
-      const current = file.kind === "deleted" ? await this.files.read(file.path) : await this.files.read(file.path);
+      const current = await this.files.read(file.path);
       file.currentHash = await reviewHash(current);
+      if (file.status === "accepted" || file.status === "rejected" || file.status === "superseded") continue;
       const relation = relationFromHashes(file.currentHash, file);
       if (relation === "human" && file.status === "pending") file.status = "conflicted";
     }
@@ -255,10 +256,13 @@ export class ReviewService {
     const relation = await classifyContent(current, file);
     if (decision === "accept") {
       if (relation === "human") {
-        file.status = "conflicted";
-        this.emit("review-conflict-detected", this.base(changeSet, file, { decision, result: "conflict" }));
-        await this.commitSet(changeSet);
-        return this.fail(changeSet, "The file was modified outside the agent proposal.", true);
+        if (file.proposedContent == null && file.kind !== "deleted") {
+          file.status = "conflicted";
+          this.emit("review-conflict-detected", this.base(changeSet, file, { decision, result: "conflict" }));
+          await this.commitSet(changeSet);
+          return this.fail(changeSet, "The file was modified outside the agent proposal.", true);
+        }
+        return this.applyAiVersion(changeSet, file);
       }
       for (const hunk of file.hunks) {
         if (!pendingOnly || hunk.status === "pending" || hunk.status === "conflicted") {

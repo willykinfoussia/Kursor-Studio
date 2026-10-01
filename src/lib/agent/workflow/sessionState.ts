@@ -9,6 +9,7 @@ import { routeGoalKind, type TurnReply, type TurnVerdict } from "../workflows/tu
 import { explicitDesignYes, isAffirmativeReply, isDesignApprovalReply, isDesignRejectionReply } from "./approvalLanguage";
 
 const CATEGORY_PREFIX = /^(?:[\p{L}\d][\p{L}\d\s/]*)\s+[—–-]\s+/u;
+const PROCESS_DESIGN_NOTE = /cli(?:que|quer|quez)\s+sur\s+build|click(?:ing)?\s+build|continuer\s+le\s+plan\s+existant|continue\s+the\s+existing\s+plan/i;
 
 export function normalizeDesignNote(label: string): string {
   const trimmed = label.trim();
@@ -17,7 +18,10 @@ export function normalizeDesignNote(label: string): string {
 }
 
 export function isRecordableDesignNote(label: string): boolean {
-  return Boolean(normalizeDesignNote(label));
+  const note = normalizeDesignNote(label);
+  if (!note) return false;
+  if (PROCESS_DESIGN_NOTE.test(label) || PROCESS_DESIGN_NOTE.test(note)) return false;
+  return true;
 }
 
 export type GoalKind = "explain" | "build" | "bug" | "other";
@@ -59,28 +63,21 @@ function restoreAgentBranch(data: WorkflowSessionPersist): AgentBranchState | nu
   return null;
 }
 
-function planStillOpen(plan?: { status?: string; todos?: { status: string }[] } | null): boolean {
-  if (!plan || plan.status === "done") return false;
-  return (plan.todos ?? []).some((todo) => todo.status === "pending" || todo.status === "in_progress");
-}
-
 export function shouldCloseImplementationCycle(
   session: {
     planApproved: boolean;
     planPath: string | null;
     skipProcess?: boolean;
-    planTodosComplete?: boolean;
+    designApproved?: unknown;
   },
   plan?: { status?: string; todos?: { status: string }[] } | null,
   continuing = false,
+  reply: TurnReply = "none",
 ): boolean {
   if (session.skipProcess) return false;
   if (continuing) return false;
-  if (session.planApproved) {
-    if (session.planTodosComplete) return true;
-    if (!plan && session.planPath) return false;
-    return !planStillOpen(plan);
-  }
+  if (reply === "design_yes" || reply === "design_no") return false;
+  if (session.planApproved || session.designApproved) return true;
   return plan?.status === "done" && Boolean(session.planPath);
 }
 
@@ -179,16 +176,6 @@ export class WorkflowSessionState {
     this.skillCheckThisTurn = true;
     if (skillId && !this.invokedSkillIds.includes(skillId)) {
       this.invokedSkillIds.push(skillId);
-    }
-    if (
-      skillId === "systematic-debugging"
-      && this.goalKind === "build"
-      && !this.designApproved
-      && !this.planApproved
-      && this.interactionMode === "agent"
-      && !this.invokedSkillIds.includes("brainstorming")
-    ) {
-      this.goalKind = "bug";
     }
   }
 

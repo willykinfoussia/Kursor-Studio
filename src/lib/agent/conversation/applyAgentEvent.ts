@@ -371,16 +371,22 @@ export function applyAgentEvent(
         kind: "recovery",
         text: "Recovery available",
       }];
-    case "review-completed":
-      return [...current, {
-        type: "review-summary",
+    case "review-completed": {
+      const summary = {
+        type: "review-summary" as const,
         id: `review:${event.changeSetId}`,
         changeSetId: event.changeSetId,
         accepted: event.accepted,
         rejected: event.rejected,
         partial: event.partial,
         conflicted: event.conflicted,
-      }];
+      };
+      const existing = current.findIndex((item) => item.type === "review-summary" && item.changeSetId === event.changeSetId);
+      if (existing >= 0) {
+        return current.map((item, index) => index === existing ? summary : item);
+      }
+      return [...current, summary];
+    }
     case "knowledge-reflect-skipped": {
       const text = knowledgeSkipNotice(event.reason, event.error);
       if (!text) return current;

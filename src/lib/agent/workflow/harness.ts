@@ -55,4 +55,5 @@ export interface AgentHarnessHooks {
   ensureAgentBranch(input: GitBranchInput): Promise<GitBranchResult>;
   finishBranch(input: FinishBranchInput): Promise<FinishBranchResult>;
   compactNow?(): Promise<void>;
+  latestAssistantText?(): string;
 }

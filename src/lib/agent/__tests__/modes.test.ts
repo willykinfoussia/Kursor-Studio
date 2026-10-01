@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createPlanDocument } from "../plans/planFile";
 import { WorkflowSessionState } from "../workflow/sessionState";
+import { turnVerdict } from "../workflows/turnClassifier";
 import {
   cycleInteractionMode,
   isReadOnlyInteraction,
@@ -52,6 +53,22 @@ describe("interaction modes", () => {
     expect(overlay).toMatch(/Do it directly/i);
     expect(overlay).toMatch(/Do not load the brainstorming skill/i);
     expect(overlay).not.toMatch(/Load the brainstorming skill first/i);
+  });
+
+  it("asks for brainstorming after a new build clears the previous plan", () => {
+    const next = new WorkflowSessionState();
+    next.approveDesign("old");
+    next.approvePlan();
+    next.planPath = ".kursor/plans/demo.plan.md";
+    next.markSkillCheck("executing-plans");
+    next.beginUserTurn("fix the button and improve the site", {
+      cycleIdle: true,
+      verdict: turnVerdict({ goalKind: "build", complexity: "medium", continuation: "new", reply: "none" }),
+    });
+    const overlay = modeSystemOverlay("agent", next);
+    expect(overlay).toMatch(/Load the brainstorming skill first/);
+    expect(overlay).toMatch(/yes\/oui/);
+    expect(overlay).not.toMatch(/executing-plans/i);
   });
 
   it("keeps Agent on brainstorming until the design is approved", () => {
@@ -250,6 +267,14 @@ describe("interaction modes", () => {
     expect(next.agentBranch).toEqual({ name: "kursor-feat", base: "main" });
     expect(next.snapshot().agentBranch).toEqual({ name: "kursor-feat", base: "main" });
     expect(next.snapshot()).not.toHaveProperty("worktree");
+  });
+
+  it("does not record a Build process choice as a design note", () => {
+    const next = new WorkflowSessionState();
+    next.recordDesignChoice("Oui, continuer le plan existant — je clique sur Build pour l'approuver");
+    next.recordDesignChoice("Yes, continue the existing plan — click Build to approve it");
+    next.recordDesignChoice("Tailwind CSS");
+    expect(next.designNotes).toEqual(["Tailwind CSS"]);
   });
 
   it("snapshots and restores designNotes and designBrief", () => {

@@ -105,6 +105,8 @@ export function createAskUserQuestionTool(): AgentTool {
         && !harness.workflow.designApproved
       ) {
         const modeBefore = harness.workflow.interactionMode;
+        const brief = harness.latestAssistantText?.().trim();
+        if (brief) harness.workflow.setDesignBrief(brief);
         harness.workflow.approveDesign(prompt);
         ctx.skillSession?.emit?.({ type: "design-gate", reason: "approved", tool: "ask_user_question" });
         if (harness.workflow.interactionMode !== modeBefore) {
