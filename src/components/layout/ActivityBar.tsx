@@ -1,10 +1,11 @@
-import { BookOpen, Bot, FlaskConical, Folder, GitBranch, ListTodo, Puzzle, Settings, Workflow } from "lucide-react";
+import { BookOpen, Bot, FlaskConical, Folder, GitBranch, ListTodo, Network, Puzzle, Settings, Workflow } from "lucide-react";
 import { useUiStore } from "../../stores/uiStore";
 import type { AppView } from "../../types/ui";
 
 const primary = [
   { id: "project" as AppView, label: "Project", icon: Folder },
   { id: "graph" as AppView, label: "Specs", icon: BookOpen },
+  { id: "code-analysis" as AppView, label: "Code Graph", icon: Network },
   { id: "agents" as AppView, label: "Agents", icon: Bot },
   { id: "run" as AppView, label: "Run", icon: Workflow },
   { id: "tests" as AppView, label: "Tests", icon: FlaskConical },

@@ -68,6 +68,7 @@ export const APP_COMMANDS: AppCommand[] = [
   { id: "git-pull", label: "Git: Pull", run: () => void useGitStore.getState().pull() },
   { id: "git-push", label: "Git: Push", run: () => void useGitStore.getState().push() },
   { id: "graph", label: "Specs", run: () => useUiStore.getState().setView("graph") },
+  { id: "code-analysis", label: "Code Graph", run: () => useUiStore.getState().setView("code-analysis") },
   { id: "run", label: "Run", run: () => useUiStore.getState().setView("run") },
   { id: "tests", label: "Tests", run: () => useUiStore.getState().setView("tests") },
   { id: "capabilities", label: "Capabilities", run: () => useUiStore.getState().setView("capabilities") },

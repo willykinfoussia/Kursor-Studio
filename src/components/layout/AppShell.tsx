@@ -22,6 +22,7 @@ import { TerminalPanel } from "../terminal/TerminalPanel";
 import { DialogHost } from "../ui/DialogHost";
 import { CapabilitiesPage } from "../../pages/CapabilitiesPage";
 import { AgentsPage } from "../../pages/AgentsPage";
+import { CodeAnalysisPage } from "../../pages/CodeAnalysisPage";
 import { SettingsPage } from "../../pages/SettingsPage";
 import { TasksPage } from "../../pages/TasksPage";
 import { TestsPage } from "../../pages/TestsPage";
@@ -63,6 +64,7 @@ function CurrentPage() {
   if (view === "tasks") return <TasksPage />;
   if (view === "github") return <GitWorkspace />;
   if (view === "review") return <ReviewWorkspace />;
+  if (view === "code-analysis") return <CodeAnalysisPage />;
   if (view === "settings") return <SettingsPage />;
   if (view === "projects") return <ManageProjectsPage />;
   if (view === "project-settings") return <ProjectSettingsPage />;
