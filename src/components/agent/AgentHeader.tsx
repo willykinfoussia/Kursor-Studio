@@ -64,8 +64,8 @@ export function AgentHeader({
       <div className="agent-identity">
         <div className="agent-avatar"><Bot size={15} /></div>
         <div>
-          <div className="agent-name">Agent{projectName ? ` · ${projectName}` : ""}</div>
-          <div className={`agent-state status-${status}`}>
+          <div className="agent-name" title={projectName ? `Agent · ${projectName}` : "Agent"}>Agent{projectName ? ` · ${projectName}` : ""}</div>
+          <div className={`agent-state status-${status}`} title={conversationTitle}>
             {status === "fallback" ? <RefreshCw size={9} /> : status === "completed" ? <Check size={9} /> : <span className="status-dot" style={{ width: 5, height: 5 }} />}
             {working && status !== "waiting_approval" ? "Working" : STATUS_LABEL[status]}
             {conversationTitle ? ` · ${conversationTitle}` : ""}

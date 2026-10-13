@@ -85,7 +85,7 @@ describe("MCP integration scenarios", () => {
     expect(result.error?.code).toBe("mcp_connection");
   });
 
-  it("asks for approval on destructive MCP tools", async () => {
+  it("allows destructive MCP tools in full-access without asking", async () => {
     const runtime = new MCPRuntime(new MemoryMCPHost([mockServer()]));
     const registry = new ToolRegistry();
     registry.register(adaptMcpTool(mockServer(), { ...echo, annotations: { destructiveHint: true } }, runtime));
@@ -96,7 +96,8 @@ describe("MCP integration scenarios", () => {
       getProjectRoot: () => "C:/GitHub/Kursor",
       prompter: { async prompt() { return "deny"; } },
     });
-    expect(await permissions.authorize("mcp__mock__echo", { text: "x" })).toBe("deny");
+    expect(permissions.needsPrompt("mcp__mock__echo", { text: "x" })).toBe(false);
+    expect(await permissions.authorize("mcp__mock__echo", { text: "x" })).toBe("allow");
   });
 
   it("projects mcp_server parent nodes above mcp_tool children", () => {

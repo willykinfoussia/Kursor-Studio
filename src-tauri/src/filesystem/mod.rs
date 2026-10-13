@@ -16,6 +16,8 @@ pub const DEFAULT_EXCLUDED_DIRECTORIES: &[&str] = &[
     "target",
     ".vscode",
     ".idea",
+    ".codegraph",
+    "graphify-out",
 ];
 
 const BINARY_EXTENSIONS: &[&str] = &[
@@ -77,18 +79,19 @@ pub fn is_excluded_path(root: &Path, path: &Path) -> bool {
 
 pub fn resolve_within_root(root: &Path, requested: &str, must_exist: bool) -> AppResult<PathBuf> {
     let relative = Path::new(requested);
-    if relative.is_absolute()
-        || relative.components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::Prefix(_) | Component::RootDir
-            )
-        })
-    {
+    let canonical_root = strip_verbatim(&root.canonicalize().map_err(|_| AppError::ProjectMissing)?);
+    if relative.is_absolute() {
+        return resolve_absolute(&canonical_root, relative, must_exist);
+    }
+    if relative.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir
+        )
+    }) {
         return Err(AppError::PathOutsideProject);
     }
 
-    let canonical_root = strip_verbatim(&root.canonicalize().map_err(|_| AppError::ProjectMissing)?);
     let candidate = if requested.is_empty() || requested == "." {
         canonical_root.clone()
     } else {
@@ -106,6 +109,22 @@ pub fn resolve_within_root(root: &Path, requested: &str, must_exist: bool) -> Ap
     } else {
         resolve_for_create(&canonical_root, &candidate)
     }
+}
+
+fn resolve_absolute(canonical_root: &Path, requested: &Path, must_exist: bool) -> AppResult<PathBuf> {
+    let candidate = strip_verbatim(requested);
+    if must_exist {
+        let canonical_candidate = strip_verbatim(
+            &candidate
+                .canonicalize()
+                .map_err(|_| AppError::InvalidRequest("Unable to read file.".to_owned()))?,
+        );
+        if !is_inside(canonical_root, &canonical_candidate) {
+            return Err(AppError::PathOutsideProject);
+        }
+        return Ok(canonical_candidate);
+    }
+    resolve_for_create(canonical_root, &candidate)
 }
 
 fn resolve_for_create(root: &Path, candidate: &Path) -> AppResult<PathBuf> {
@@ -460,6 +479,25 @@ mod tests {
         };
         let err = resolve_within_root(&root, outside, true).unwrap_err();
         assert!(matches!(err, AppError::PathOutsideProject));
+    }
+
+    #[test]
+    fn accepts_absolute_path_inside_project() {
+        let (_guard, root) = temp_project();
+        let resolved = resolve_within_root(&root, &root.to_string_lossy(), true).unwrap();
+        assert_eq!(resolved, root);
+        let src = root.join("src");
+        let resolved_src = resolve_within_root(&root, &src.to_string_lossy(), true).unwrap();
+        assert_eq!(resolved_src, strip_verbatim(&src.canonicalize().unwrap()));
+
+        let neighbor = root.parent().unwrap().join(format!(
+            "{}-neighbor",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+        fs::create_dir(&neighbor).unwrap();
+        let err = resolve_within_root(&root, &neighbor.to_string_lossy(), true).unwrap_err();
+        assert!(matches!(err, AppError::PathOutsideProject));
+        let _ = fs::remove_dir(&neighbor);
     }
 
     #[test]

@@ -6,7 +6,7 @@ import { constrainDecision, policyDecision } from "../decide";
 import type { ProjectDiscovery, TestCase, TestRun, TestStrategyDecision } from "../domain";
 import { discoverProject, memoryFileStore } from "../discover";
 import { TestingEngine } from "../engine";
-import { parseCoverageSummary, PlaywrightRunner, VitestRunner } from "../runners";
+import { parseCoverageSummary, PlaywrightRunner, playwrightPreviewConfig, VitestRunner } from "../runners";
 import { MemoryTestingStore } from "../store";
 
 const vitestJson = JSON.stringify({
@@ -51,8 +51,8 @@ describe("discoverProject and strategy", () => {
     const discovery = await discoverProject(files);
     const decision = policyDecision(discovery);
     expect(decision.applicationType).toBe("web");
-    expect(decision.e2e).toMatchObject({ runner: "playwright", action: "install" });
-    expect(decision.unit).toMatchObject({ runner: "vitest", action: "install" });
+    expect(decision.e2e).toMatchObject({ runner: null, action: "not_applicable" });
+    expect(decision.unit).toMatchObject({ runner: null, action: "not_applicable" });
   });
 
   it("reuses Playwright that is already configured", async () => {
@@ -144,6 +144,26 @@ describe("runners", () => {
     expect(emptyIntegration).toEqual([
       expect.objectContaining({ status: "SKIPPED", name: "vitest integration suite", type: "INTEGRATION" }),
     ]);
+    const emptyUnit = new VitestRunner().parseResults({
+      command: "pnpm exec vitest run --passWithNoTests",
+      exitCode: 0,
+      stdout: "",
+      stderr: "No test files found, exiting with code 0",
+      startedAt: 4,
+    }, "unit");
+    expect(emptyUnit).toEqual([
+      expect.objectContaining({ status: "SKIPPED", name: "vitest unit suite", type: "UNIT" }),
+    ]);
+
+    const rooted = playwrightPreviewConfig("playwright.config.ts");
+    expect(rooted).toContain('import config from "../playwright.config.ts"');
+    expect(rooted).toContain("fromRoot(resolved?.testDir) ?? projectRoot");
+    expect(rooted).toContain("anchorServer(resolved?.webServer)");
+    const bare = playwrightPreviewConfig(null);
+    expect(bare).toContain("testDir: projectRoot");
+    expect(bare).toContain("**/e2e/**/*.{spec,test}.{js,ts,mjs,cjs,jsx,tsx}");
+    expect(bare).toContain('screenshot: "on"');
+    expect(bare).toContain('video: "on"');
 
     expect(parseCoverageSummary(JSON.stringify({
       total: { lines: { pct: 82.4 }, branches: { pct: 70 }, functions: { pct: 90 }, statements: { pct: 81 } },
@@ -163,7 +183,7 @@ describe("TestingEngine", () => {
       },
     };
     const files = memoryFileStore({
-      "package.json": packageJson(),
+      "package.json": packageJson({ scripts: { test: "vitest run", "test:e2e": "playwright test" } }),
       "index.html": "<html></html>",
       ".kursor/user-cases.json": JSON.stringify([{ id: "UC-001", name: "Login", actor: "user", steps: ["Open login"], expectedResults: ["Dashboard"], priority: "critical" }]),
       ".git/HEAD": "ref: refs/heads/main\n",
@@ -206,6 +226,35 @@ describe("TestingEngine", () => {
   });
 });
 
+describe("playwright preview config", () => {
+  it("appends the preview config to the project e2e script", async () => {
+    const commands: string[] = [];
+    let written = "";
+    const runner: CheckRunner = {
+      async run(command) {
+        commands.push(command);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    };
+    const discovery = {
+      markers: ["playwright.config.ts"],
+      scripts: { "test:e2e": "npx playwright test" },
+      packageManager: "npm",
+    } as ProjectDiscovery;
+    await new PlaywrightRunner().run({
+      runner,
+      packageManager: "npm",
+      cwd: "",
+      runId: "r1",
+      discovery,
+      writeFile: async (_path, content) => { written = content; },
+    }, "e2e");
+    expect(commands[0]).toBe("npx playwright test --config=.kursor/playwright.preview.config.ts");
+    expect(written).toContain('import config from "../playwright.config.ts"');
+    expect(written).toContain('screenshot: "on"');
+  });
+});
+
 describe("empty integration suite", () => {
   it("filters integration files and passes when none exist", async () => {
     const commands: string[] = [];
@@ -228,7 +277,7 @@ describe("empty integration suite", () => {
     const integration = commands[1] ?? "";
     expect(unit).toContain("--exclude **/*.integration.test.ts");
     expect(unit).toContain("--exclude **/*.e2e.test.ts");
-    expect(unit).not.toContain("--passWithNoTests");
+    expect(unit).toContain("--passWithNoTests");
     expect(integration).toContain("**/*.integration.test.ts");
     expect(integration).toContain("tests/integration");
     expect(integration).toContain("--passWithNoTests");

@@ -57,6 +57,7 @@ export function idsFromEvent(event: AgentEvent): {
     case "verification-check-started":
     case "verification-check-completed":
     case "verification-completed":
+    case "test-progress":
       return { runId: event.requestId };
     case "run-resumed":
       return { runId: event.requestId };

@@ -27,7 +27,7 @@ pub struct BlenderInstallation {
 
 pub fn which(name: &str) -> DetectedExecutable {
     let program = resolve_lookup_name(name);
-    if let Some(path) = find_on_path(&program) {
+    if let Some(path) = find_on_path(&program).or_else(|| known_tool_path(name)) {
         return DetectedExecutable {
             name: name.into(),
             found: true,
@@ -136,6 +136,38 @@ fn find_on_path(name: &str) -> Option<String> {
         }
         None
     })
+}
+
+fn known_tool_path(name: &str) -> Option<String> {
+    #[cfg(windows)]
+    {
+        let user = std::env::var("USERPROFILE").ok();
+        let appdata = std::env::var("APPDATA").ok();
+        let mut candidates = Vec::new();
+        if name.eq_ignore_ascii_case("codegraph") {
+            if let Some(dir) = &appdata {
+                candidates.push(PathBuf::from(dir).join("npm").join("codegraph.cmd"));
+            }
+        }
+        if name.eq_ignore_ascii_case("graphify") {
+            if let Some(dir) = &user {
+                let bin = PathBuf::from(dir).join(".local").join("bin");
+                candidates.push(bin.join("graphify.exe"));
+                candidates.push(bin.join("graphify.cmd"));
+            }
+        }
+        for candidate in candidates {
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+        }
+        return None;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = name;
+        None
+    }
 }
 
 fn resolve_lookup_name(name: &str) -> String {

@@ -1,10 +1,15 @@
 import { useEffect } from "react";
 import { agentRuntime } from "../lib/agent/AgentRuntime";
 import { useAgentStore } from "../stores/agentStore";
+import { useE2ePreviewStore } from "../stores/e2ePreviewStore";
 import { useVerificationStore } from "../stores/verificationStore";
 
 export function useVerificationEvents() {
   useEffect(() => agentRuntime.subscribe((event) => {
+    if (event.type === "test-progress") {
+      if (event.level === "e2e") useE2ePreviewStore.getState().present(event);
+      return;
+    }
     if (
       event.type === "verification-started"
       || event.type === "verification-check-started"

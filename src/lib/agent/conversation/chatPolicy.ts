@@ -15,6 +15,7 @@ export const CHAT_EVENT_POLICY = {
   "verification-check-started": "hidden",
   "verification-check-completed": "hidden",
   "verification-completed": "timeline",
+  "test-progress": "hidden",
   completed: "timeline",
   error: "timeline",
   fallback: "hidden",

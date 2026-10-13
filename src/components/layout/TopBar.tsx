@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, ChevronDown, Command, GitBranch, PanelRight, Settings, User } from "lucide-react";
 import { useUiStore } from "../../stores/uiStore";
+import { useProjectViewStore } from "../../stores/projectViewStore";
 import { useProjectStore } from "../../stores/projectStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { IconButton } from "../ui/Controls";
@@ -19,9 +20,13 @@ export function TopBar({
   onNew: () => void;
 }) {
   const setView = useUiStore((state) => state.setView);
+  const activeView = useUiStore((state) => state.activeView);
   const openSettings = useUiStore((state) => state.openSettings);
   const agentVisible = useUiStore((state) => state.agentVisible);
   const toggleAgent = useUiStore((state) => state.toggleAgent);
+  const surface = useProjectViewStore((state) => state.surface);
+  const openProjectSurface = useProjectViewStore((state) => state.openProject);
+  const openCode = useProjectViewStore((state) => state.openCode);
   const currentProject = useProjectStore((state) => state.currentProject);
   const projects = useProjectStore((state) => state.projects);
   const recentProjects = useProjectStore((state) => state.recentProjects);
@@ -163,6 +168,12 @@ export function TopBar({
         )}
       </div>
       <div className="top-actions">
+        {activeView === "project" && (
+          <div className="surface-switch" role="tablist" aria-label="Workspace">
+            <button type="button" role="tab" aria-selected={surface !== "code"} className={surface !== "code" ? "active" : ""} onClick={openProjectSurface}>Project</button>
+            <button type="button" role="tab" aria-selected={surface === "code"} className={surface === "code" ? "active" : ""} onClick={openCode}>Code</button>
+          </div>
+        )}
         <span className="status-pill"><span className="status-dot" /> {githubConnected ? "Connected" : currentProject ? "Running" : "Idle"}</span>
         <div className="git-menu-wrap" ref={gitRef}>
           <button type="button" className="git-status" disabled={!currentProject || gitBusy} onClick={() => setGitOpen((open) => !open)}>
@@ -237,13 +248,15 @@ export function TopBar({
           )}
         </div>
         <IconButton icon={Bell} label="Notifications" />
-        <IconButton
-          icon={PanelRight}
-          label={agentVisible ? "Collapse Agent" : "Expand Agent"}
-          className={agentVisible ? "active" : undefined}
-          aria-pressed={agentVisible}
-          onClick={() => toggleAgent()}
-        />
+        {activeView !== "project" && (
+          <IconButton
+            icon={PanelRight}
+            label={agentVisible ? "Collapse Agent" : "Expand Agent"}
+            className={agentVisible ? "active" : undefined}
+            aria-pressed={agentVisible}
+            onClick={() => toggleAgent()}
+          />
+        )}
         <IconButton icon={Settings} label="Settings" onClick={() => openSettings("Account")} />
         <div className="account-menu-wrap" ref={accountRef}>
           <button type="button" className="account-chip" onClick={() => setAccountOpen((open) => !open)}>

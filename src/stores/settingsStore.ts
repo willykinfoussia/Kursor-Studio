@@ -90,8 +90,8 @@ const defaults: AppSettings = {
   customModels: [],
   simulateFailureFor: [],
   automaticTools: true,
-  permissionMode: "workspace-write",
-  confirmDestructive: true,
+  permissionMode: "full-access",
+  confirmDestructive: false,
   yoloMode: false,
   allowEnvFiles: false,
   permissionWhitelist: [],
@@ -179,7 +179,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const automaticTools = typeof next.automaticTools === "boolean" ? next.automaticTools : get().automaticTools;
       next.permissionMode = isPermissionMode(next.permissionMode)
         ? next.permissionMode
-        : sessionModeFromSettings(automaticTools);
+        : (automaticTools ? get().permissionMode : "read-only");
       next.automaticTools = next.permissionMode !== "read-only";
       next.yoloMode = typeof next.yoloMode === "boolean" ? next.yoloMode : get().yoloMode;
       next.allowEnvFiles = typeof next.allowEnvFiles === "boolean" ? next.allowEnvFiles : get().allowEnvFiles;

@@ -302,7 +302,7 @@ export function SettingsPage() {
               </div>
               {keyStatus && <div className="setting-success">{keyStatus}</div>}
             </div>
-            <SettingRow label="Agent permission mode" description="Limits what the agent can do without asking. Full access still cannot leave the project or run blocked commands.">
+            <SettingRow label="Agent permission mode" description="Full access runs tools, including MCP and deletes, without asking. It still cannot leave the project or run blocked commands.">
               <SelectControl
                 value={settings.permissionMode}
                 onChange={(event) => settings.update("permissionMode", event.target.value as PermissionMode)}
@@ -334,7 +334,7 @@ export function SettingsPage() {
           </>}
           {section === "Terminal" && <SettingRow label="Default shell" description="Shell used when creating a native terminal session."><SelectControl value={settings.terminalShell} onChange={(event) => settings.update("terminalShell", event.target.value)}>{Array.from(new Set([...availableShells(), settings.terminalShell])).map((shell) => <option key={shell} value={shell}>{shell}</option>)}</SelectControl></SettingRow>}
           {section === "Security" && <>
-            <SettingRow label="Agent permission mode" description="Read-only, workspace write, or full access (high risk). Protected files and blocked commands stay denied.">
+            <SettingRow label="Agent permission mode" description="Full access allows every tool without approval, including MCP and deletes. Protected files and blocked commands stay denied.">
               <SelectControl
                 value={settings.permissionMode}
                 onChange={(event) => settings.update("permissionMode", event.target.value as PermissionMode)}
@@ -344,7 +344,7 @@ export function SettingsPage() {
                 <option value="full-access">Full access (high risk)</option>
               </SelectControl>
             </SettingRow>
-            <SettingRow label="Confirm destructive actions" description="Required for deletes and unrestricted commands."><Toggle checked={settings.confirmDestructive} label="Confirm destructive actions" onChange={(value) => settings.update("confirmDestructive", value)} /></SettingRow>
+            <SettingRow label="Confirm destructive actions" description="Asks before deletes in workspace-write mode. Full access does not ask."><Toggle checked={settings.confirmDestructive} label="Confirm destructive actions" onChange={(value) => settings.update("confirmDestructive", value)} /></SettingRow>
             <YoloAndWhitelistControls />
           </>}
           {section === "AI" && <>

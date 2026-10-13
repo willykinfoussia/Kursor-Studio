@@ -1,4 +1,5 @@
 mod agent;
+mod code_intel;
 mod commands;
 mod database;
 mod error;
@@ -11,6 +12,7 @@ mod secrets;
 mod state;
 mod terminal;
 
+use code_intel::code_intel_ensure;
 use commands::{
     agent::agent_ping,
     database::{
@@ -207,6 +209,7 @@ pub fn run() {
             mcp_cancel,
             mcp_set_tool_enabled,
             mcp_which,
+            code_intel_ensure,
             mcp_detect_blender,
             mcp_probe_tcp,
             db_settings_list,

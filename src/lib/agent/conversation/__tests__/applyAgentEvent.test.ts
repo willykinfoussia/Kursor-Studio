@@ -79,6 +79,43 @@ describe("applyAgentEvent", () => {
     expect(items.some((item) => item.type === "system" && item.kind === "checkpoint")).toBe(false);
   });
 
+  it("folds unit progress into the open verification block and leaves e2e out of the chat", () => {
+    const items = reduce([
+      { type: "verification-started", requestId: "r1" },
+      {
+        type: "test-progress",
+        requestId: "r1",
+        level: "unit",
+        phase: "running",
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        running: 1,
+        total: 2,
+        cases: [
+          { id: "adds", name: "adds", status: "passed" },
+          { id: "charges", name: "charges", status: "running" },
+        ],
+      },
+      {
+        type: "test-progress",
+        requestId: "r1",
+        level: "e2e",
+        phase: "running",
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        running: 1,
+        total: 1,
+        cases: [{ id: "login", name: "login", status: "running" }],
+      },
+    ]);
+    expect(items.filter((item) => item.type === "verification")).toHaveLength(1);
+    const verification = items.find((item) => item.type === "verification");
+    expect(verification?.type === "verification" ? verification.levels?.map((level) => level.level) : []).toEqual(["unit"]);
+    expect(verification?.type === "verification" ? verification.levels?.[0]?.passed : 0).toBe(1);
+  });
+
   it("builds a compact plan from workflow events", () => {
     const items = reduce([
       { type: "workflow-started", runId: "w1", workflowId: "feature", complexity: "medium", stepIds: ["inspect", "implement"] },

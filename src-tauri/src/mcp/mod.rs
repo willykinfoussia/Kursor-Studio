@@ -574,8 +574,15 @@ async fn spawn_stdio_client(record: &McpServerRecord, secrets: &SecretStore, cwd
         .unwrap_or_default();
     let env = resolve_env(record, secrets)?;
     let program = resolve_program(command);
-    let transport = TokioChildProcess::new(Command::new(&program).configure(|cmd| {
-        cmd.args(&args);
+    let script = windows_script(&program);
+    let launch = if script { "cmd.exe".to_string() } else { program.clone() };
+    let script_line = command_line(&program, &args);
+    let transport = TokioChildProcess::new(Command::new(&launch).configure(|cmd| {
+        if script {
+            cmd.args(["/d", "/s", "/c", &script_line]);
+        } else {
+            cmd.args(&args);
+        }
         for (key, value) in &env {
             cmd.env(key, value);
         }
@@ -1007,6 +1014,34 @@ fn command_available(command: &str) -> bool {
             || dir.join(format!("{program}.cmd")).exists()
             || dir.join(format!("{program}.bat")).exists()
     })
+}
+
+fn windows_script(program: &str) -> bool {
+    #[cfg(windows)]
+    {
+        let lower = program.to_ascii_lowercase();
+        return lower.ends_with(".cmd") || lower.ends_with(".bat");
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = program;
+        false
+    }
+}
+
+fn quote_arg(value: &str) -> String {
+    if value.is_empty() || value.chars().any(|ch| ch.is_whitespace() || matches!(ch, '"' | '&' | '|' | '<' | '>')) {
+        return format!("\"{}\"", value.replace('"', "\\\""));
+    }
+    value.to_string()
+}
+
+fn command_line(program: &str, args: &[String]) -> String {
+    std::iter::once(program.to_string())
+        .chain(args.iter().cloned())
+        .map(|part| quote_arg(&part))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn resolve_program(command: &str) -> String {

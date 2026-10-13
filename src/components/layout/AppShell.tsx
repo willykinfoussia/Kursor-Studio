@@ -9,16 +9,13 @@ import { useProjectWatcher } from "../../hooks/useProjectWatcher";
 import { useAccountSpecsWatcher } from "../../hooks/useAccountSpecsWatcher";
 import { useWindowCloseGuard } from "../../hooks/useWindowCloseGuard";
 import { useAgentStore } from "../../stores/agentStore";
-import { useTerminalStore } from "../../stores/terminalStore";
 import { useUiStore } from "../../stores/uiStore";
 import { useProjectStore } from "../../stores/projectStore";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { useProjectView } from "../../hooks/useProjectView";
 import { AgentPanel } from "../agent/AgentPanel";
 import { CommandPalette } from "../command/CommandPalette";
 import { QuickOpen } from "../command/QuickOpen";
-import { EditorWorkspace } from "../editor/EditorWorkspace";
-import { ProjectExplorer } from "../explorer/ProjectExplorer";
-import { TerminalPanel } from "../terminal/TerminalPanel";
 import { DialogHost } from "../ui/DialogHost";
 import { CapabilitiesPage } from "../../pages/CapabilitiesPage";
 import { AgentsPage } from "../../pages/AgentsPage";
@@ -33,25 +30,11 @@ import { GraphWorkspace } from "../graph/GraphWorkspace";
 import { WorkflowWorkspace } from "../workflow/WorkflowWorkspace";
 import { ReviewWorkspace } from "../review/ReviewWorkspace";
 import { ActivityBar } from "./ActivityBar";
+import { MissionWorkspace } from "./MissionWorkspace";
 import { TopBar } from "./TopBar";
 
 function ResizeHandle({ orientation }: { orientation: "horizontal" | "vertical" }) {
   return <Separator className={`resize-handle ${orientation}`} />;
-}
-
-function ProjectCenter() {
-  const terminalVisible = useTerminalStore((state) => state.visible);
-  return (
-    <div className="center-column">
-      {terminalVisible ? (
-        <Group orientation="vertical">
-          <Panel id="editor" defaultSize="70%" minSize="240px"><EditorWorkspace /></Panel>
-          <ResizeHandle orientation="vertical" />
-          <Panel id="terminal" defaultSize="30%" minSize="120px" maxSize="55%"><TerminalPanel /></Panel>
-        </Group>
-      ) : <EditorWorkspace />}
-    </div>
-  );
 }
 
 function CurrentPage() {
@@ -68,7 +51,7 @@ function CurrentPage() {
   if (view === "settings") return <SettingsPage />;
   if (view === "projects") return <ManageProjectsPage />;
   if (view === "project-settings") return <ProjectSettingsPage />;
-  return <ProjectCenter />;
+  return null;
 }
 
 export function AppShell({ onClone, onNew }: { onClone: () => void; onNew: () => void }) {
@@ -76,16 +59,14 @@ export function AppShell({ onClone, onNew }: { onClone: () => void; onNew: () =>
   useVerificationEvents();
   useRunObservability();
   useProjectWatcher();
+  useProjectView();
   useAccountSpecsWatcher();
   useWindowCloseGuard();
   const view = useUiStore((state) => state.activeView);
-  const sidebarVisible = useUiStore((state) => state.sidebarVisible);
   const agentVisible = useUiStore((state) => state.agentVisible);
   const loadRecents = useProjectStore((state) => state.loadRecents);
-  const showSidebar = view === "project" && sidebarVisible;
-  const layoutKey = `${showSidebar ? "sidebar-" : ""}${agentVisible ? "agent" : "solo"}`;
-  const centerSize = showSidebar && agentVisible ? "55%" : agentVisible ? "72%" : showSidebar ? "82%" : "100%";
-  const agentSize = showSidebar ? "27%" : "28%";
+  const layoutKey = agentVisible ? "agent" : "solo";
+  const centerSize = agentVisible ? "72%" : "100%";
 
   useEffect(() => {
     void loadRecents();
@@ -104,13 +85,8 @@ export function AppShell({ onClone, onNew }: { onClone: () => void; onNew: () =>
       <TopBar onClone={onClone} onNew={onNew} />
       <div className="workspace">
         <ActivityBar />
+        {view === "project" ? <MissionWorkspace /> : (
         <Group key={layoutKey} className="panel-group" orientation="horizontal">
-          {showSidebar && (
-            <>
-              <Panel id="sidebar" defaultSize="18%" minSize="180px" maxSize="28%"><ProjectExplorer /></Panel>
-              <ResizeHandle orientation="horizontal" />
-            </>
-          )}
           <Panel id="center" defaultSize={centerSize} minSize="240px">
             <div className="panel">
               <CurrentPage />
@@ -119,10 +95,11 @@ export function AppShell({ onClone, onNew }: { onClone: () => void; onNew: () =>
           {agentVisible && (
             <>
               <ResizeHandle orientation="horizontal" />
-              <Panel id="agent" defaultSize={agentSize} minSize="290px" maxSize="40%"><AgentPanel /></Panel>
+              <Panel id="agent" defaultSize="28%" minSize="290px" maxSize="40%"><AgentPanel /></Panel>
             </>
           )}
         </Group>
+        )}
       </div>
       <DialogHost />
       <QuickOpen />

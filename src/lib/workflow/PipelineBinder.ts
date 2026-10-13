@@ -590,7 +590,7 @@ function placePromptIngredients(state: BinderState) {
   }
   if (band.length === 0) return;
   dropEdge(state, PIPELINE_IDS.user, PIPELINE_IDS.task);
-  let previous = PIPELINE_IDS.user;
+  let previous: string = PIPELINE_IDS.user;
   for (const id of band) {
     addSequence(state, previous, id);
     previous = id;

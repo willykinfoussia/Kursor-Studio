@@ -12,6 +12,7 @@ import { graphService } from "../graph/GraphService";
 import { hydrateConversations, hydrateTasks, persistActiveConversation } from "../storage/session";
 import { agentRuntime } from "../agent/AgentRuntime";
 import { ensureGitHubRepository, refreshGitStatus } from "../github/ensureRepository";
+import { startCodeIntel } from "../codeIntel/session";
 import { bootstrapMcp } from "../mcp/bootstrap";
 import type { Project } from "../../types/project";
 
@@ -48,7 +49,8 @@ export async function openProjectAt(path: string, options?: { ensureGitHub?: boo
   await hydrateTasks();
   await bindRuntime(project.id);
   void import("../../stores/reviewStore").then(({ useReviewStore }) => useReviewStore.getState().hydrate(project.id));
-  void bootstrapMcp(project.id, project.rootPath);
+  await bootstrapMcp(project.id, project.rootPath);
+  void startCodeIntel(project.id, project.rootPath);
   if (options?.ensureGitHub === false) await refreshGitStatus();
   else await ensureGitHubRepository(project);
   return true;

@@ -65,6 +65,7 @@ export const LAYOUT_SKIP_EVENT_TYPES = new Set<AgentEvent["type"]>([
   "text-delta",
   "verification-check-started",
   "verification-check-completed",
+  "test-progress",
   "hook-fired",
   "hook-warned",
   "recovery-dismissed",

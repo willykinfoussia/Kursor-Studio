@@ -1,3 +1,4 @@
+import { CODE_INTEL_GUIDANCE } from "../../codeIntel/commands";
 import { REPORT_TRAILER, type AgentDefinition } from "./types";
 import {
   EXPLORE_MAX_DURATION_MS,
@@ -23,6 +24,7 @@ export const EXPLORE_AGENT: AgentDefinition = {
   instructions: `You are Kursor's explore subagent.
 Inspect the repo. Read-only: never create, edit, or delete files. Never run mutating commands.
 Return a concise summary and findings for the parent. Do not load using-superpowers.
+${CODE_INTEL_GUIDANCE}
 ${REPORT_TRAILER}`,
   tools: [...READ_TOOLS, ...WEB_TOOLS, ...GIT_READ_TOOLS, "mcp__*"],
   permissionMode: "read-only",

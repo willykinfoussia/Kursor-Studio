@@ -20,6 +20,7 @@ import {
   type TestStrategyDecision,
   type UserCase,
 } from "./domain";
+import { findLatestCapture, progressFromCases, type TestLevelProgress } from "./progress";
 import { createDefaultRegistry, readCoverage, type RunnerRegistry, type TestRunner } from "./runners";
 import type { TestingStore } from "./store";
 
@@ -31,6 +32,8 @@ export interface TestingEngineOptions {
   registry?: RunnerRegistry;
   cwd?: string;
   projectName?: string;
+  onProgress?: (progress: TestLevelProgress) => void;
+  writeFile?: (path: string, content: string) => Promise<void>;
 }
 
 export interface RunLevelsInput {
@@ -43,6 +46,10 @@ export interface RunLevelsInput {
 
 export class TestingEngine {
   private readonly registry: RunnerRegistry;
+  private screenshot: string | null = null;
+  private video: string | null = null;
+  private shotAt = 0;
+  private latestProgress = new Map<TestLevel, TestLevelProgress>();
 
   constructor(private readonly options: TestingEngineOptions) {
     this.registry = options.registry ?? createDefaultRegistry();
@@ -112,6 +119,10 @@ export class TestingEngine {
       commandLog: [],
     };
 
+    this.screenshot = null;
+    this.video = null;
+    this.shotAt = 0;
+    this.latestProgress.clear();
     try {
       if (input.signal?.aborted) {
         run.status = "CANCELLED";
@@ -127,17 +138,44 @@ export class TestingEngine {
         if (decision.action === "install" && !runner.detect(discovery)) {
           await runner.install(this.context(discovery, run.id, input.signal));
         }
-        const raw = await runner.run(this.context(discovery, run.id, input.signal), level);
+        this.publish({
+          level,
+          phase: "running",
+          passed: 0,
+          failed: 0,
+          skipped: 0,
+          running: 0,
+          total: null,
+          cases: [],
+        });
+        const raw = await runner.run(this.context(discovery, run.id, input.signal, (progress) => this.publish(progress)), level);
         run.commandLog.push(commandLog(raw, level, this.options.cwd ?? "", git.commitSha));
         const cases = linkCases(runner.parseResults(raw, level), userCases, input.taskId);
         const artifacts = (await runner.collectArtifacts(this.context(discovery, run.id, input.signal), raw))
           .map((artifact) => ({ ...artifact, runId: run.id, id: `${run.id}:${artifact.id}` }));
         run.artifacts.push(...artifacts);
         run.results.push(...cases.map((item) => toResult(run, item)));
+        const shot = artifacts.find((artifact) => artifact.kind === "screenshot")?.path;
+        if (shot) this.screenshot = shot;
+        this.publish(progressFromCases(level, cases));
       }
       run.coverage = await this.collectCoverage();
       run.status = statusFor(run, input.levels, strategy);
     } catch (error) {
+      const failedLevel = input.levels.find((level) => this.latestProgress.get(level)?.phase === "running");
+      if (failedLevel) {
+        const previous = this.latestProgress.get(failedLevel);
+        this.publish({
+          level: failedLevel,
+          phase: "failed",
+          passed: previous?.passed ?? 0,
+          failed: Math.max(previous?.failed ?? 0, 1),
+          skipped: previous?.skipped ?? 0,
+          running: 0,
+          total: previous?.total ?? null,
+          cases: previous?.cases ?? [],
+        });
+      }
       run.status = error instanceof TestingError && error.code === "TEST_TIMEOUT" ? "CANCELLED" : "ERROR";
       run.error = error instanceof TestingError
         ? `${error.code}: ${error.message}`
@@ -171,7 +209,42 @@ export class TestingEngine {
     return run;
   }
 
-  private context(discovery: Awaited<ReturnType<typeof discoverProject>>, runId: string, signal?: AbortSignal) {
+  private publish(progress: TestLevelProgress) {
+    const next = progress.level === "e2e"
+      ? {
+        ...progress,
+        screenshotPath: progress.screenshotPath ?? this.screenshot,
+        videoPath: progress.videoPath ?? this.video,
+      }
+      : progress;
+    this.latestProgress.set(progress.level, next);
+    this.options.onProgress?.(next);
+    if (progress.level === "e2e") void this.refreshScreenshot();
+  }
+
+  private async refreshScreenshot() {
+    const now = Date.now();
+    if (this.screenshot && this.video && now - this.shotAt < 500) return;
+    this.shotAt = now;
+    const capture = await findLatestCapture(this.options.files);
+    const image = capture.image ?? this.screenshot;
+    const video = capture.video ?? this.video;
+    if (image === this.screenshot && video === this.video) return;
+    this.screenshot = image;
+    this.video = video;
+    const current = this.latestProgress.get("e2e");
+    if (!current) return;
+    const next = { ...current, screenshotPath: image, videoPath: video };
+    this.latestProgress.set("e2e", next);
+    this.options.onProgress?.(next);
+  }
+
+  private context(
+    discovery: Awaited<ReturnType<typeof discoverProject>>,
+    runId: string,
+    signal?: AbortSignal,
+    onProgress?: (progress: TestLevelProgress) => void,
+  ) {
     return {
       runner: this.options.runner,
       files: this.options.files,
@@ -180,6 +253,8 @@ export class TestingEngine {
       runId,
       discovery,
       signal,
+      onProgress,
+      writeFile: this.options.writeFile,
     };
   }
 }

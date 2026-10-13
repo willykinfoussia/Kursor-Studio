@@ -234,6 +234,7 @@ export interface RawRun {
   stderr: string;
   denied?: boolean;
   startedAt: number;
+  reportJson?: string;
 }
 
 export function caseTypeFor(level: TestLevel): TestCaseType {

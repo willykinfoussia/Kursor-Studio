@@ -40,6 +40,9 @@ rand = "0.8"
 urlencoding = "2"
 sha2 = "0.10"
 hex = "0.4"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+flate2 = "1"
+tar = "0.4"
 walkdir = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time", "sync", "io-util"] }
 rmcp = { version = "3", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }

@@ -21,6 +21,8 @@ export const DEFAULT_EXCLUDED_DIRECTORIES = [
   "target",
   ".vscode",
   ".idea",
+  ".codegraph",
+  "graphify-out",
 ] as const;
 
 export const BINARY_EXTENSIONS = new Set([

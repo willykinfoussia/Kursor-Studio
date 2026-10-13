@@ -39,6 +39,8 @@ import type { WorkflowSessionState } from "./workflow/sessionState";
 import { ensureUsingSuperpowers } from "./workflow/prompts";
 import { isReadOnlyInteraction } from "./modes";
 import { commandCheckRunner, formatForModel, VerificationEngine } from "./verification/VerificationEngine";
+import { liveCommandRunner } from "./verification/liveRunner";
+import type { AgentProcessService } from "./tools/native";
 import { runRequiredVerification, type RequiredVerificationTesting } from "./verification/runRequiredVerification";
 import { MAX_VERIFICATION_ATTEMPTS, type CheckRunner } from "./verification/types";
 import { planVerificationRun } from "./verification/whenToRun";
@@ -52,6 +54,7 @@ export interface AgentLoopDependencies {
   verification?: VerificationEngine;
   checkRunner?: CheckRunner;
   testing?: RequiredVerificationTesting;
+  process?: AgentProcessService;
 }
 
 export interface AgentLoopRunOptions {
@@ -101,6 +104,7 @@ export class AgentLoop {
   private readonly verification: VerificationEngine;
   private readonly checkRunner?: CheckRunner;
   private readonly testing?: AgentLoopDependencies["testing"];
+  private readonly process?: AgentProcessService;
 
   constructor(dependencies: AgentLoopDependencies) {
     this.aiService = dependencies.aiService;
@@ -111,6 +115,7 @@ export class AgentLoop {
     this.verification = dependencies.verification ?? new VerificationEngine();
     this.checkRunner = dependencies.checkRunner;
     this.testing = dependencies.testing;
+    this.process = dependencies.process;
   }
 
   async run(options: AgentLoopRunOptions): Promise<AgentLoopResult> {
@@ -541,7 +546,15 @@ export class AgentLoop {
     });
     if (!planned) return input.outcome;
 
-    const runner = this.checkRunner ?? commandCheckRunner((command) => input.executor.run("run_command", { command }));
+    const runner = this.checkRunner ?? (
+      this.process
+        ? liveCommandRunner({
+          run: (command) => input.executor.run("run_command", { command }),
+          gate: input.gate,
+          process: this.process,
+        })
+        : commandCheckRunner((command) => input.executor.run("run_command", { command }))
+    );
     let outcome = input.outcome;
 
     for (let attempt = 1; attempt <= MAX_VERIFICATION_ATTEMPTS; attempt += 1) {
@@ -578,6 +591,13 @@ export class AgentLoop {
             type: "verification-check-completed",
             requestId: input.execution.requestId,
             result,
+          });
+        },
+        onTestProgress: (progress) => {
+          input.emit({
+            type: "test-progress",
+            requestId: input.execution.requestId,
+            ...progress,
           });
         },
       });

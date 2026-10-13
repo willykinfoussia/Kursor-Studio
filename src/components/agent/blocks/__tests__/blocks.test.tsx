@@ -199,6 +199,36 @@ describe("agent blocks", () => {
     expect(screen.queryByText("Build")).toBeNull();
   });
 
+  it("shows a unit progress count while verification is running", () => {
+    render(
+      <VerificationBlock
+        status="running"
+        blockers={[]}
+        commands={[]}
+        attempt={1}
+        levels={[{
+          level: "unit",
+          phase: "running",
+          passed: 1,
+          failed: 1,
+          skipped: 0,
+          running: 0,
+          total: 2,
+          cases: [
+            { id: "adds", name: "adds", status: "passed" },
+            { id: "breaks", name: "breaks", status: "failed", error: "expected 1" },
+          ],
+        }]}
+        presentation={presentation}
+        onToggle={() => undefined}
+      />,
+    );
+    expect(screen.getByText("2/2")).toBeTruthy();
+    expect(screen.getByText("breaks")).toBeTruthy();
+    expect(screen.getByText("expected 1")).toBeTruthy();
+    expect(screen.getByRole("progressbar", { name: "Unit" })).toBeTruthy();
+  });
+
   it("does not invent check labels when there are no commands and no results", () => {
     render(
       <VerificationBlock

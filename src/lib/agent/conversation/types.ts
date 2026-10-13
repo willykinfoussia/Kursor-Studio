@@ -1,3 +1,4 @@
+import type { TestLevelProgress } from "../../testing/progress";
 import type { WorkStatus } from "../types";
 
 export type ChangeFlag = "A" | "M" | "D";
@@ -22,7 +23,8 @@ export type SystemNoticeKind =
   | "compacted"
   | "specialist"
   | "mode"
-  | "knowledge";
+  | "knowledge"
+  | "artifact";
 
 export type ConversationItem =
   | { type: "user"; id: string; messageId: string }
@@ -39,6 +41,7 @@ export type ConversationItem =
       commands: string[];
       attempt: number;
       results?: import("../verification/types").CheckResult[];
+      levels?: TestLevelProgress[];
     }
   | { type: "changes"; id: string; paths: ChangePath[] }
   | { type: "approval"; id: string; kind: "permission" | "workflow"; approvalId: string }
@@ -53,7 +56,7 @@ export type ConversationItem =
       partial: number;
       conflicted: number;
     }
-  | { type: "system"; id: string; kind: SystemNoticeKind; text: string }
+  | { type: "system"; id: string; kind: SystemNoticeKind; text: string; artifactPath?: string }
   | { type: "knowledge-proposal"; id: string; proposalId: string; summary: string }
   | { type: "plan-card"; id: string; planId: string }
   | {

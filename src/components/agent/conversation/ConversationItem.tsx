@@ -14,6 +14,7 @@ import { QuestionBlock } from "../blocks/QuestionBlock";
 import { UserMessage } from "./UserMessage";
 import { AssistantMessage } from "./AssistantMessage";
 import { SystemNotice } from "./SystemNotice";
+import { useProjectViewStore } from "../../../stores/projectViewStore";
 
 export interface ConversationItemProps {
   item: Item;
@@ -79,6 +80,7 @@ function ConversationItemView({
           commands={item.commands}
           attempt={item.attempt}
           results={item.results}
+          levels={item.levels}
           presentation={presentation}
           onToggle={onToggle}
           workflowNodeId={item.id}
@@ -132,6 +134,15 @@ function ConversationItemView({
             <p>{item.text || "The AI provider could not complete this request."}</p>
             {onRetry && <button type="button" className="permission-allow" onClick={onRetry}>Retry</button>}
           </section>
+        );
+      }
+      if (item.kind === "artifact") {
+        return (
+          <SystemNotice
+            kind={item.kind}
+            text={item.text}
+            onOpen={item.artifactPath ? () => useProjectViewStore.getState().focus(item.artifactPath ?? "") : undefined}
+          />
         );
       }
       if (item.kind === "recovery" || item.kind === "mode") {

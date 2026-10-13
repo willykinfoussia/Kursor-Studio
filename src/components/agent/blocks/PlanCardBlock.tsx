@@ -3,8 +3,8 @@ import { ListTodo } from "lucide-react";
 import { buildPlan, isPlanBuildable } from "../../../lib/agent/plans/buildPlan";
 import { planProgress } from "../../../lib/agent/plans/types";
 import { planByRef, usePlanStore } from "../../../stores/planStore";
-import { useEditorStore } from "../../../stores/editorStore";
 import { useAgentStore } from "../../../stores/agentStore";
+import { useProjectViewStore } from "../../../stores/projectViewStore";
 
 export function PlanCardBlock({ planId }: { planId: string }) {
   const plan = usePlanStore((state) => planByRef(state, planId));
@@ -63,7 +63,7 @@ export function PlanCardBlock({ planId }: { planId: string }) {
           type="button"
           className="text-link"
           onClick={() => {
-            void useEditorStore.getState().openFile(plan.path);
+            useProjectViewStore.getState().showPlan(plan.path);
           }}
         >
           View Plan

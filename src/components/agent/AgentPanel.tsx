@@ -28,6 +28,7 @@ import { modeNoticeText } from "../../lib/agent/modes";
 import { isUserQuestionStep } from "../../lib/agent/workflow/questionOptions";
 import { buildPlan, isPlanBuildable, latestBuildablePlanId } from "../../lib/agent/plans/buildPlan";
 import { usePlanStore } from "../../stores/planStore";
+import { useProjectViewStore } from "../../stores/projectViewStore";
 
 export function AgentPanel() {
   const status = useAgentStore((state) => state.status);
@@ -74,6 +75,8 @@ export function AgentPanel() {
   const dismissSticky = useAgentUiStore((state) => state.dismissSticky);
   const resetUi = useAgentUiStore((state) => state.resetUi);
   const projectName = useProjectStore((state) => state.currentProject?.name);
+  const surface = useProjectViewStore((state) => state.surface);
+  const immersive = surface === "chat" && timeline.length === 0;
   const projectRoot = useProjectStore((state) => state.currentProject?.rootPath);
   const runtime = useAgentRuntime();
   const [input, setInput] = useState("");
@@ -248,7 +251,7 @@ export function AgentPanel() {
   );
 
   return (
-    <aside className="agent-panel" ref={panelRef}>
+    <aside className={`agent-panel${surface === "chat" ? " agent-panel-solo" : ""}${immersive ? " agent-panel-hero" : ""}`} ref={panelRef}>
       <AgentHeader
         status={status}
         activeModel={activeModel}
@@ -265,7 +268,7 @@ export function AgentPanel() {
         onOpenConversation={openConversation}
         onRemoveConversation={removeConversation}
         projectName={projectName}
-        conversationTitle={conversations.find((item) => item.id === activeConversationId)?.title}
+        conversationTitle={timeline.length === 0 ? undefined : conversations.find((item) => item.id === activeConversationId)?.title}
       />
       {agentMode !== "agent" && (
         <p className="approval-copy" style={{ padding: "0 12px" }}>
@@ -302,6 +305,7 @@ export function AgentPanel() {
           thoughtMs={thoughtMs}
           onToggle={toggle}
           onSuggest={(text) => void send(text)}
+          immersive={immersive}
           onStopProcess={() => runtime.cancel()}
           onRetry={() => {
             if (recoveryAvailable) {
@@ -359,6 +363,7 @@ export function AgentPanel() {
           onCycleMode={() => {
             runtime.cycleInteractionMode();
           }}
+          placeholder={immersive ? "Tell Kursor what you want to create..." : undefined}
           canBuildPlan={canBuildPlan}
           onBuildPlan={() => {
             const planId = latestBuildablePlanId(isStreaming);

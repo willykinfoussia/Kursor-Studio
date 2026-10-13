@@ -13,7 +13,7 @@ function nextUserTodoStatus(status: PlanTodoStatus): PlanTodoStatus {
   return status === "completed" ? "pending" : "completed";
 }
 
-export function PlanEditorView({ path }: { path: string }) {
+export function PlanEditorView({ path, onBackToProject }: { path: string; onBackToProject?: () => void }) {
   const plan = usePlanStore((state) => planByPath(state, path));
   const loadPlan = usePlanStore((state) => state.loadPlan);
   const setTodoStatus = usePlanStore((state) => state.setTodoStatus);
@@ -74,6 +74,10 @@ export function PlanEditorView({ path }: { path: string }) {
       viewLabel="Plan view"
       defaultRaw={startRaw}
       extraActions={(
+        <>
+        {onBackToProject && (
+          <button type="button" className="md-doc-back" onClick={onBackToProject}>Project</button>
+        )}
         <button
           type="button"
           className="plan-build-btn"
@@ -84,12 +88,12 @@ export function PlanEditorView({ path }: { path: string }) {
           {plan.status === "building" && isStreaming ? "Building…" : plan.status === "done" ? "Done" : "Build"}
           {buildable && !busy && <kbd>Ctrl+↵</kbd>}
         </button>
+        </>
       )}
       banner={error ? <p className="plan-card-error md-doc-error" role="alert">{error}</p> : null}
     >
       <h1 className="md-doc-title">{plan.name}</h1>
       {plan.overview && <p className="md-doc-overview">{plan.overview}</p>}
-      {plan.body.trim() && <MarkdownRenderer content={plan.body} knownPath={plan.path} />}
       <div className="plan-editor-todos-head">
         <span>{plan.todos.length} To-do{plan.todos.length === 1 ? "" : "s"}</span>
         <button type="button" className="plan-editor-new" onClick={() => setAdding((value) => !value)}>
@@ -135,6 +139,7 @@ export function PlanEditorView({ path }: { path: string }) {
       {plan.todos.length === 0 && (
         <p className="plan-editor-empty">No todos yet. Add one with + New.</p>
       )}
+      {plan.body.trim() && <MarkdownRenderer content={plan.body} knownPath={plan.path} />}
     </MarkdownDocumentView>
   );
 }

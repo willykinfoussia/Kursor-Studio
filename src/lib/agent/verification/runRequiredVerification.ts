@@ -6,6 +6,7 @@ import {
   verificationKindsWithoutTest,
 } from "../../testing/bridge";
 import type { TestRun, TestStrategyDecision } from "../../testing/domain";
+import type { TestLevelProgress } from "../../testing/progress";
 import type { VerificationEngine } from "./VerificationEngine";
 import type { CheckResult, CheckRunner, PlannedCheck, VerificationReport, VerificationRunInput } from "./types";
 
@@ -15,6 +16,7 @@ export interface RequiredVerificationTesting {
     requestId: string;
     signal?: AbortSignal;
     runner: CheckRunner;
+    onProgress?: (progress: TestLevelProgress) => void;
   }): Promise<{ run: TestRun; strategy: TestStrategyDecision } | null>;
 }
 
@@ -28,6 +30,7 @@ export async function runRequiredVerification(input: {
   signal?: AbortSignal;
   onCheckStart?: (check: PlannedCheck) => void;
   onCheckEnd?: (result: CheckResult) => void;
+  onTestProgress?: (progress: TestLevelProgress) => void;
 }): Promise<VerificationReport> {
   const levels = input.runner && input.testing ? testingLevelsFor(input.planned) : null;
   let tested: { run: TestRun; strategy: TestStrategyDecision } | null = null;
@@ -39,6 +42,7 @@ export async function runRequiredVerification(input: {
         requestId: input.requestId,
         signal: input.signal,
         runner: input.runner,
+        onProgress: input.onTestProgress,
       });
     } catch (error) {
       testingError = error;

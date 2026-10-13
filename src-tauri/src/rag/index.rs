@@ -108,9 +108,16 @@ mod tests {
         fs::write(root.join("icon.png"), [0u8, 1, 2, 0]).unwrap();
         fs::write(root.join("App.tsx"), "export const x = 1;").unwrap();
 
+        fs::create_dir(root.join("graphify-out")).unwrap();
+        fs::write(root.join("graphify-out").join("graph.json"), "{}").unwrap();
+        fs::create_dir(root.join(".codegraph")).unwrap();
+        fs::write(root.join(".codegraph").join("index.ts"), "export {}").unwrap();
+
         assert!(should_ignore(root, &root.join("node_modules").join("pkg.js"), &[]));
         assert!(should_ignore(root, &root.join(".env"), &[]));
         assert!(should_ignore(root, &root.join("icon.png"), &[]));
+        assert!(should_ignore(root, &root.join("graphify-out").join("graph.json"), &[]));
+        assert!(should_ignore(root, &root.join(".codegraph").join("index.ts"), &[]));
         assert!(!should_ignore(root, &root.join("App.tsx"), &[]));
         assert_eq!(hash_bytes(b"hello"), hash_bytes(b"hello"));
         assert_ne!(hash_bytes(b"hello"), hash_bytes(b"world"));

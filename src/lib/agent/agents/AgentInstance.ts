@@ -37,6 +37,7 @@ const CHILD_EVENTS = new Set<AgentEvent["type"]>([
   "verification-check-started",
   "verification-check-completed",
   "verification-completed",
+  "test-progress",
   "context-assembled",
   "compacted",
   "user-question",

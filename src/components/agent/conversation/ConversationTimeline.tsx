@@ -30,6 +30,7 @@ export function ConversationTimeline({
   thoughtMs,
   onToggle,
   onSuggest,
+  immersive = false,
   onStopProcess,
   onRetry,
   onContinue,
@@ -53,6 +54,7 @@ export function ConversationTimeline({
   thoughtMs?: number | null;
   onToggle: (id: string, currentlyExpanded: boolean) => void;
   onSuggest: (text: string) => void;
+  immersive?: boolean;
   onStopProcess: () => void;
   onRetry: () => void;
   onContinue: () => void;
@@ -88,7 +90,7 @@ export function ConversationTimeline({
   }, [highlightedItemId]);
 
   if (visibleItems.length === 0) {
-    return <EmptyState onSuggest={onSuggest} />;
+    return <EmptyState onSuggest={onSuggest} immersive={immersive} />;
   }
 
   return (

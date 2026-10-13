@@ -70,6 +70,8 @@ export interface CommandRunResult {
 
 export interface CheckRunner {
   run(command: string): Promise<CommandRunResult>;
+  /** `onChunk` receives the stdout captured so far, not a delta. */
+  runLive?(command: string, onChunk: (stdout: string) => void, signal?: AbortSignal): Promise<CommandRunResult>;
 }
 
 export interface PlannedCheck {

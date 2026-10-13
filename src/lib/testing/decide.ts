@@ -114,13 +114,13 @@ function decideUnit(discovery: ProjectDiscovery, app: ApplicationType): LevelDec
       ],
     };
   }
-  if (discovery.ecosystem === "node") {
+  if (discovery.ecosystem === "node" && (discovery.scripts.test || hasTestConfig(discovery, "unit"))) {
     return {
       testLevel: "unit",
       applicationType: app,
       runner: "vitest",
       action: "install",
-      reasons: ["Node project has no unit runner", "Vitest is the default for a Node project without a test framework"],
+      reasons: ["Node project has a test script and no unit runner", "Vitest is the default for a Node project without a test framework"],
     };
   }
   if (discovery.ecosystem === "python") {
@@ -141,6 +141,13 @@ function decideUnit(discovery: ProjectDiscovery, app: ApplicationType): LevelDec
   };
 }
 
+function hasTestConfig(discovery: ProjectDiscovery, level: "unit" | "e2e"): boolean {
+  const names = level === "unit"
+    ? ["vitest.config.ts", "vitest.config.js", "vitest.config.mjs", "jest.config.ts", "jest.config.js", "jest.config.json", "pytest.ini", "conftest.py"]
+    : ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs", "cypress.config.ts", "cypress.config.js", "wdio.conf.ts", "wdio.conf.js"];
+  return names.some((name) => discovery.markers.includes(name));
+}
+
 function decideE2E(discovery: ProjectDiscovery, app: ApplicationType): LevelDecision {
   const present = runnersFor(discovery, "e2e");
   const preferred = scriptPrefers(discovery, present.map((runner) => runner.id));
@@ -154,22 +161,22 @@ function decideE2E(discovery: ProjectDiscovery, app: ApplicationType): LevelDeci
       reasons: [`${chosen.id} already exists in the project`],
     };
   }
-  if (app === "web") {
+  if (app === "web" && (discovery.scripts["test:e2e"] || hasTestConfig(discovery, "e2e"))) {
     return {
       testLevel: "e2e",
       applicationType: app,
       runner: "playwright",
       action: "install",
-      reasons: ["Web application detected", "No E2E framework detected"],
+      reasons: ["Web application detected", "An e2e script or config exists and no E2E framework is installed"],
     };
   }
-  if (app === "mobile") {
+  if (app === "mobile" && (discovery.scripts["test:e2e"] || hasTestConfig(discovery, "e2e"))) {
     return {
       testLevel: "e2e",
       applicationType: app,
       runner: "appium",
       action: "install",
-      reasons: ["Mobile application detected", "No mobile E2E runner detected"],
+      reasons: ["Mobile application detected", "An e2e script or config exists and no mobile E2E runner is installed"],
     };
   }
   return {
@@ -177,7 +184,9 @@ function decideE2E(discovery: ProjectDiscovery, app: ApplicationType): LevelDeci
     applicationType: app,
     runner: null,
     action: "not_applicable",
-    reasons: ["No graphical user journey"],
+    reasons: [app === "web" || app === "mobile"
+      ? "No e2e script or config, so end-to-end tests are not required"
+      : "No graphical user journey"],
   };
 }
 

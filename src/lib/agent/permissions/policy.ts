@@ -26,8 +26,6 @@ export function modeDecision(
     return "ask";
   }
 
-  if (mcp) return "ask";
-  if (del && confirmDestructive) return "ask";
   return "allow";
 }
 

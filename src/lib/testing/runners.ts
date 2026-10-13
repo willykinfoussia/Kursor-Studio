@@ -1,6 +1,7 @@
 import type { CheckRunner } from "../agent/verification/types";
 import type { ContextFileStore } from "../agent/context/types";
 import { addDev, exec } from "./discover";
+import { casesFromProgress, progressFromOutput, reporterForCommand, type TestLevelProgress } from "./progress";
 import {
   TestingError,
   caseTypeFor,
@@ -23,6 +24,8 @@ export interface RunnerContext {
   runId: string;
   discovery: ProjectDiscovery;
   signal?: AbortSignal;
+  onProgress?: (progress: TestLevelProgress) => void;
+  writeFile?: (path: string, content: string) => Promise<void>;
 }
 
 export interface TestRunner {
@@ -103,7 +106,7 @@ export class VitestRunner implements TestRunner {
 
   async run(ctx: RunnerContext, level: TestLevel): Promise<RawRun> {
     const exclude = level === "unit"
-      ? " --exclude **/*.integration.test.ts --exclude **/*.e2e.test.ts"
+      ? " --exclude **/*.integration.test.ts --exclude **/*.e2e.test.ts --passWithNoTests"
       : "";
     const include = level === "integration"
       ? " **/*.integration.test.ts tests/integration --passWithNoTests"
@@ -111,7 +114,15 @@ export class VitestRunner implements TestRunner {
     const coverage = ctx.discovery.markers.includes("coverage") || scriptHasCoverage(ctx.discovery)
       ? " --coverage.enabled --coverage.reporter=json-summary"
       : "";
-    return runFixed(ctx, `${exec(pm(ctx), "vitest")} run --reporter=json${exclude}${include}${coverage}`, "TEST_EXECUTION_ERROR");
+    const jsonPath = `.kursor/vitest-${level}.json`;
+    const raw = await runFixed(
+      ctx,
+      `${exec(pm(ctx), "vitest")} run --reporter=verbose --reporter=json --outputFile.json=${jsonPath}${exclude}${include}${coverage}`,
+      "TEST_EXECUTION_ERROR",
+      level,
+    );
+    const reportJson = (await ctx.files?.readFile(jsonPath).catch(() => ""))?.trim();
+    return reportJson ? { ...raw, reportJson } : raw;
   }
 
   async collectArtifacts(_ctx: RunnerContext, raw: RawRun): Promise<TestArtifact[]> {
@@ -119,7 +130,7 @@ export class VitestRunner implements TestRunner {
   }
 
   parseResults(raw: RawRun, level: TestLevel): TestCase[] {
-    const json = extractJson(raw.stdout);
+    const json = structuredReport(raw);
     const cases: TestCase[] = [];
     const files = json && Array.isArray(json.testResults) ? json.testResults : [];
     for (const file of files) {
@@ -133,7 +144,9 @@ export class VitestRunner implements TestRunner {
       }
     }
     if (cases.length > 0) return cases;
-    if (level === "integration" && (noTestFilesFound(raw) || cases.length === 0)) {
+    const live = casesFromReporter(raw, level, "vitest");
+    if (live.length > 0) return live;
+    if (noTestFilesFound(raw) || (level === "integration" && cases.length === 0)) {
       return [skippedSuite(raw, level, "vitest")];
     }
     return [summaryCase(raw, level, "vitest")];
@@ -166,12 +179,13 @@ export class PlaywrightRunner implements TestRunner {
     return { ok: true, note: "The agent writes user-case specs. Playwright only executes them." };
   }
 
-  async run(ctx: RunnerContext): Promise<RawRun> {
+  async run(ctx: RunnerContext, _level?: TestLevel): Promise<RawRun> {
     const script = ctx.discovery.scripts["test:e2e"];
-    const command = script && script.toLowerCase().includes("playwright")
+    const base = script && script.toLowerCase().includes("playwright")
       ? script
-      : `${exec(pm(ctx), "playwright")} test --reporter=json`;
-    return runFixed(ctx, command, "TEST_EXECUTION_ERROR");
+      : `${exec(pm(ctx), "playwright")} test --reporter=line`;
+    const command = await withPreviewConfig(ctx, base);
+    return runFixed(ctx, command, "TEST_EXECUTION_ERROR", "e2e");
   }
 
   async collectArtifacts(ctx: RunnerContext, raw: RawRun): Promise<TestArtifact[]> {
@@ -195,10 +209,12 @@ export class PlaywrightRunner implements TestRunner {
   }
 
   parseResults(raw: RawRun): TestCase[] {
-    const json = extractJson(raw.stdout);
+    const json = structuredReport(raw);
     const suites = json && Array.isArray(json.suites) ? json.suites : [];
     const cases = flattenPlaywright(suites, "e2e");
-    return cases.length > 0 ? cases : [summaryCase(raw, "e2e", "playwright")];
+    if (cases.length > 0) return cases;
+    const live = casesFromReporter(raw, "e2e", "playwright");
+    return live.length > 0 ? live : [summaryCase(raw, "e2e", "playwright")];
   }
 
   async cleanup() {
@@ -286,21 +302,36 @@ export async function readCoverage(files?: ContextFileStore): Promise<CoverageSn
   return undefined;
 }
 
-async function runFixed(ctx: RunnerContext, command: string, code: "TEST_EXECUTION_ERROR" | "TEST_INSTALLATION_ERROR"): Promise<RawRun> {
+async function runFixed(
+  ctx: RunnerContext,
+  command: string,
+  code: "TEST_EXECUTION_ERROR" | "TEST_INSTALLATION_ERROR",
+  level?: TestLevel,
+): Promise<RawRun> {
   if (ctx.signal?.aborted) {
     throw new TestingError("TEST_TIMEOUT", "Test run was cancelled.");
   }
   const startedAt = Date.now();
   let ran: Awaited<ReturnType<CheckRunner["run"]>>;
+  const reporter = level ? reporterForCommand(command) : "generic";
   try {
-    ran = await ctx.runner.run(command);
+    if (level && ctx.runner.runLive) {
+      ran = await ctx.runner.runLive(command, (stdout) => {
+        ctx.onProgress?.(progressFromOutput(level, reporter, stdout, false));
+      }, ctx.signal);
+    } else {
+      ran = await ctx.runner.run(command);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Command failed.";
-    if (/timed out/i.test(message)) throw new TestingError("TEST_TIMEOUT", message);
+    if (/timed out|cancelled/i.test(message)) throw new TestingError("TEST_TIMEOUT", message);
     throw new TestingError(code, message);
   }
   if (ran.denied) {
     throw new TestingError("TEST_ENVIRONMENT_ERROR", ran.stderr || "Command was denied.");
+  }
+  if (level && ctx.runner.runLive) {
+    ctx.onProgress?.(progressFromOutput(level, reporter, ran.stdout, true));
   }
   return {
     command,
@@ -310,6 +341,83 @@ async function runFixed(ctx: RunnerContext, command: string, code: "TEST_EXECUTI
     denied: ran.denied,
     startedAt,
   };
+}
+
+const PREVIEW_CONFIG = ".kursor/playwright.preview.config.ts";
+const PLAYWRIGHT_CONFIGS = ["playwright.config.ts", "playwright.config.mts", "playwright.config.js", "playwright.config.mjs", "playwright.config.cjs"];
+
+export function playwrightPreviewConfig(sourceFile: string | null): string {
+  const header = `import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "@playwright/test";
+${sourceFile ? `import config from "../${sourceFile}";\n` : ""}
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function fromRoot(value) {
+  if (!value || typeof value !== "string") return null;
+  return path.isAbsolute(value) ? value : path.resolve(projectRoot, value);
+}
+
+function anchorServer(server) {
+  if (!server) return undefined;
+  if (Array.isArray(server)) return server.map((item) => anchorServer(item));
+  return { ...server, cwd: fromRoot(server.cwd) ?? projectRoot };
+}
+`;
+  if (!sourceFile) {
+    return `${header}
+export default defineConfig({
+  testDir: projectRoot,
+  testMatch: [
+    "**/e2e/**/*.{spec,test}.{js,ts,mjs,cjs,jsx,tsx}",
+    "**/*.e2e.test.{js,ts,mjs,cjs,jsx,tsx}",
+    "**/*.spec.{js,ts,mjs,cjs,jsx,tsx}",
+  ],
+  testIgnore: ["**/node_modules/**", "**/dist/**", "**/src/**"],
+  outputDir: path.join(projectRoot, "test-results"),
+  use: {
+    screenshot: "on",
+    video: "on",
+  },
+});
+`;
+  }
+  return `${header}
+const resolved = config && typeof config === "object" && "default" in config ? config.default : config;
+const webServer = anchorServer(resolved?.webServer);
+
+export default defineConfig({
+  ...resolved,
+  testDir: fromRoot(resolved?.testDir) ?? projectRoot,
+  outputDir: fromRoot(resolved?.outputDir) ?? path.join(projectRoot, "test-results"),
+  ...(resolved?.testDir ? {} : {
+    testMatch: [
+      "**/e2e/**/*.{spec,test}.{js,ts,mjs,cjs,jsx,tsx}",
+      "**/*.e2e.test.{js,ts,mjs,cjs,jsx,tsx}",
+      "**/*.spec.{js,ts,mjs,cjs,jsx,tsx}",
+    ],
+    testIgnore: ["**/node_modules/**", "**/dist/**", "**/src/**"],
+  }),
+  use: {
+    ...(resolved?.use ?? {}),
+    screenshot: "on",
+    video: "on",
+  },
+  ...(webServer ? { webServer } : {}),
+});
+`;
+}
+
+async function withPreviewConfig(ctx: RunnerContext, command: string): Promise<string> {
+  if (!ctx.writeFile) return command;
+  const source = PLAYWRIGHT_CONFIGS.find((name) => ctx.discovery.markers.includes(name)) ?? null;
+  try {
+    await ctx.writeFile(PREVIEW_CONFIG, playwrightPreviewConfig(source));
+  } catch {
+    return command;
+  }
+  if (/\s--config(?:=|\s)/.test(command)) return command;
+  return `${command} --config=${PREVIEW_CONFIG}`;
 }
 
 function summaryCase(raw: RawRun, level: TestLevel, framework: string): TestCase {
@@ -440,6 +548,20 @@ function mapStatus(status: unknown): TestCase["status"] {
   if (value === "skipped" || value === "pending" || value === "todo") return "SKIPPED";
   if (!value) return "ERROR";
   return "ERROR";
+}
+
+function structuredReport(raw: RawRun): Record<string, unknown> | null {
+  const fromFile = raw.reportJson ? extractJson(raw.reportJson) : null;
+  if (fromFile && (Array.isArray(fromFile.testResults) || Array.isArray(fromFile.suites))) return fromFile;
+  const fromOut = extractJson(raw.stdout);
+  if (fromOut && (Array.isArray(fromOut.testResults) || Array.isArray(fromOut.suites))) return fromOut;
+  return null;
+}
+
+function casesFromReporter(raw: RawRun, level: TestLevel, framework: string): TestCase[] {
+  const reporter = framework === "playwright" ? "playwright" as const : framework === "vitest" ? "vitest" as const : reporterForCommand(raw.command);
+  const progress = progressFromOutput(level, reporter, `${raw.stdout}\n${raw.stderr}`, true);
+  return progress.cases.length > 0 ? casesFromProgress(progress, framework) : [];
 }
 
 function extractJson(raw: string): Record<string, unknown> | null {

@@ -1,3 +1,4 @@
+import type { TestLevelProgress } from "../../testing/progress";
 import type { AgentEvent, AgentMessage, WorkStatus } from "../types";
 import { modeNoticeText } from "../modes";
 import { isBuildPlanPrompt } from "../plans/isBuildPlanPrompt";
@@ -140,6 +141,7 @@ export function applyAgentEvent(
         : item
     ));
   }
+  if (event.type === "test-progress") return applyTestProgress(current, event);
   const surface = chatEventSurface(event.type);
   if (surface === "hidden" || surface === "dock") return current;
   if (surface === "strip-approval") return current;
@@ -439,6 +441,37 @@ export function applyAgentEvent(
     default:
       return current;
   }
+}
+
+function applyTestProgress(
+  current: ConversationItem[],
+  event: Extract<AgentEvent, { type: "test-progress" }>,
+): ConversationItem[] {
+  if (event.level === "e2e") return current;
+  const index = findLastIndex(current, (item) => item.type === "verification" && item.status === "running");
+  const item = index >= 0 ? current[index] : undefined;
+  if (!item || item.type !== "verification") return current;
+  const levels = upsertLevel(item.levels, event);
+  return replaceById(current, item.id, (row) => row.type === "verification" ? { ...row, levels } : row);
+}
+
+function upsertLevel(levels: TestLevelProgress[] | undefined, event: TestLevelProgress): TestLevelProgress[] {
+  const next: TestLevelProgress = {
+    level: event.level,
+    phase: event.phase,
+    passed: event.passed,
+    failed: event.failed,
+    skipped: event.skipped,
+    running: event.running,
+    total: event.total,
+    cases: event.cases,
+    screenshotPath: event.screenshotPath,
+  };
+  const list = levels ? [...levels] : [];
+  const at = list.findIndex((item) => item.level === event.level);
+  if (at >= 0) list[at] = next;
+  else list.push(next);
+  return list;
 }
 
 export const projectChatEvent = applyAgentEvent;

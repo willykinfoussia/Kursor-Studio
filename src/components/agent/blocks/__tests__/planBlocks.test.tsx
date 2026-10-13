@@ -6,6 +6,7 @@ import { PlanProgressDock } from "../../PlanProgressDock";
 import { createPlanDocument } from "../../../../lib/agent/plans/planFile";
 import { usePlanStore } from "../../../../stores/planStore";
 import { useAgentStore } from "../../../../stores/agentStore";
+import { useProjectViewStore } from "../../../../stores/projectViewStore";
 
 afterEach(() => cleanup());
 
@@ -41,6 +42,15 @@ describe("PlanCardBlock", () => {
     expect(screen.getByText(/1 of 2 To-do/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Build/ })).toBeTruthy();
     expect(screen.getByText("View Plan")).toBeTruthy();
+  });
+
+  it("opens the plan in the project stage", () => {
+    const plan = seed("draft");
+    useProjectViewStore.getState().reset();
+    render(<PlanCardBlock planId={plan.id} />);
+    fireEvent.click(screen.getByText("View Plan"));
+    expect(useProjectViewStore.getState().planPath).toBe(plan.path);
+    expect(useProjectViewStore.getState().surface).toBe("split");
   });
 
   it("disables Build once the plan is done", () => {

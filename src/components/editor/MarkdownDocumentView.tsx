@@ -53,7 +53,7 @@ export function MarkdownDocumentView({
               Raw
             </button>
           </div>
-          {extraActions}
+          {extraActions && <div className="md-doc-extra">{extraActions}</div>}
         </div>
       </div>
       {banner}
@@ -91,7 +91,7 @@ export function MarkdownDocumentView({
           />
         </div>
       ) : (
-        <div className="md-doc-body">{children}</div>
+        <div className="md-doc-body"><div className="md-doc-column">{children}</div></div>
       )}
     </div>
   );

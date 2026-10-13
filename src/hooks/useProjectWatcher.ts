@@ -3,9 +3,12 @@ import { fileSystemService } from "../lib/filesystem/FileSystemService";
 import { parentRelativePath } from "../lib/filesystem/pathUtils";
 import { ragService } from "../lib/rag/RagService";
 import { graphService } from "../lib/graph/GraphService";
+import { noteCodeIntelPath } from "../lib/codeIntel/session";
+import { isCodeIntelPath } from "../lib/codeIntel/paths";
 import { isGraphCachePath } from "../lib/graph/scanner/FileScanner";
 import { useEditorStore } from "../stores/editorStore";
 import { useFileExplorerStore } from "../stores/fileExplorerStore";
+import { scheduleProjectViewRefresh } from "../lib/projectView/session";
 import { useProjectStore } from "../stores/projectStore";
 
 export function useProjectWatcher() {
@@ -27,6 +30,10 @@ export function useProjectWatcher() {
         const paths = [...pending];
         pending.clear();
         for (const path of paths) {
+          if (isCodeIntelPath(path)) {
+            noteCodeIntelPath(path);
+            continue;
+          }
           void useFileExplorerStore.getState().refreshPath(path);
           void useEditorStore.getState().handleExternalChange(path);
           void import("../stores/reviewStore").then(({ useReviewStore }) => useReviewStore.getState().noteDiskChange(path));
@@ -38,6 +45,7 @@ export function useProjectWatcher() {
           }
         }
         void import("../stores/gitStore").then(({ useGitStore }) => useGitStore.getState().refreshStatus());
+        scheduleProjectViewRefresh();
       }, 160);
     }).then((fn) => {
       if (disposed) fn();

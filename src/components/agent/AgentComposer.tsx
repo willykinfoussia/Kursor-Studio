@@ -78,6 +78,7 @@ export function AgentComposer({
   onCycleMode,
   onBuildPlan,
   canBuildPlan = false,
+  placeholder,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -92,6 +93,7 @@ export function AgentComposer({
   onCycleMode?: () => void;
   onBuildPlan?: () => void;
   canBuildPlan?: boolean;
+  placeholder?: string;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileOptions = useRef<Array<HTMLButtonElement | null>>([]);
@@ -289,7 +291,7 @@ export function AgentComposer({
           ref={textarea}
           className="agent-textarea"
           value={value}
-          placeholder={modePlaceholder(agentMode)}
+          placeholder={placeholder ?? modePlaceholder(agentMode)}
           rows={1}
           aria-label="Ask Kursor"
           aria-autocomplete="list"

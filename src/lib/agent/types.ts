@@ -166,6 +166,7 @@ export type AgentEvent =
       trigger?: import("./verification/types").VerificationTrigger;
       cancelled?: boolean;
     }
+  | ({ type: "test-progress"; requestId: string } & import("../testing/progress").TestLevelProgress)
   | { type: "completed"; requestId: string; messageId: string; model: string }
   | { type: "error"; requestId: string; message: string }
   | { type: "fallback"; fromModel: string; toModel: string; reason: string }

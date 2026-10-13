@@ -9,6 +9,7 @@ export function SystemNotice({
   onRetry,
   onContinue,
   onRollback,
+  onOpen,
 }: {
   kind: SystemNoticeKind;
   text: string;
@@ -17,12 +18,14 @@ export function SystemNotice({
   onRetry?: () => void;
   onContinue?: () => void;
   onRollback?: () => void;
+  onOpen?: () => void;
 }) {
-  const Icon = kind === "recovery" ? History : kind === "mode" || kind === "knowledge" ? Info : AlertTriangle;
+  const Icon = kind === "recovery" ? History : kind === "artifact" || kind === "mode" || kind === "knowledge" ? Info : AlertTriangle;
   return (
     <div className={`system-notice notice-${kind}`} role="status">
       <Icon size={12} />
       <span>{text}</span>
+      {onOpen && <button type="button" className="permission-allow" onClick={onOpen}>Open</button>}
       {recovery && (
         <div className="permission-actions">
           <button type="button" className="permission-allow" onClick={onRetry}>Retry</button>

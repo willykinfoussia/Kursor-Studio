@@ -139,6 +139,7 @@ interface AgentState {
   addPermissionTrace: (trace: PermissionTraceView) => void;
   resolvePermissionTrace: (id: string, status: PermissionTraceView["status"]) => void;
   applyTimelineEvent: (event: AgentEvent) => void;
+  pushArtifactNotice: (text: string, artifactId: string) => void;
   setPlanMode: (planMode: boolean) => void;
   setAgentMode: (agentMode: AgentInteractionMode) => void;
   setAgentWorkspace: (path: string | null) => void;
@@ -401,6 +402,20 @@ export const useAgentStore = create<AgentState>((set) => ({
   resolvePermissionTrace: (id, status) => set((state) => ({
     permissionHistory: state.permissionHistory.map((item) => item.id === id ? { ...item, status } : item),
   })),
+  pushArtifactNotice: (text, artifactId) => set((state) => {
+    const item: ConversationItem = {
+      type: "system",
+      id: `artifact:${artifactId}:${crypto.randomUUID()}`,
+      kind: "artifact",
+      text,
+      artifactPath: artifactId,
+    };
+    const timeline = [...state.timeline, item];
+    return {
+      timeline,
+      timelines: { ...state.timelines, [state.activeConversationId]: timeline },
+    };
+  }),
   applyTimelineEvent: (event) => set((state) => ({
     timeline: applyAgentEvent(state.timeline, event, {
       now: Date.now(),

@@ -55,7 +55,8 @@ describe("PermissionManager", () => {
   const fetch = stubTool("fetch_url", "network.fetch", "medium");
   const search = stubTool("web_search", "network.search", "medium");
   const git = stubTool("git_status", "git.read", "low");
-  const catalog = [read, write, del, run, start, kill, fetch, search, git];
+  const mcp = stubTool("mcp__graphify__query_graph", "mcp.invoke", "low");
+  const catalog = [read, write, del, run, start, kill, fetch, search, git, mcp];
 
   it("maps automaticTools and permissionMode", () => {
     expect(sessionModeFromSettings(true)).toBe("workspace-write");
@@ -112,6 +113,8 @@ describe("PermissionManager", () => {
       ["full-access", "run_command", { command: "pnpm test" }, "allow"],
       ["full-access", "fetch_url", { url: "https://docs.rs" }, "allow"],
       ["full-access", "kill_process", { jobId: "job-1" }, "allow"],
+      ["full-access", "delete_file", { path: "src/App.tsx" }, "allow"],
+      ["full-access", "mcp__graphify__query_graph", { query: "auth" }, "allow"],
     ];
 
     for (const [mode, tool, input, expected] of cases) {

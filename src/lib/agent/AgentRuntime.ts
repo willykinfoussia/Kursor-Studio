@@ -99,6 +99,7 @@ import type { ModelPolicyConfig } from "./routing/types";
 import { gitApi } from "../tauri/githubApi";
 import { projectApi } from "../tauri/projectApi";
 import { isDetachedGitBranch, sanitizeAgentBranchName } from "./tools/gitBranch";
+import { nativeProcessService } from "./tools/http";
 import { WorkflowSessionState, shouldCloseImplementationCycle } from "./workflow/sessionState";
 import { explicitDesignYes, isAffirmativeReply } from "./workflow/approvalLanguage";
 import { classifyTurn, SAFE_TURN_VERDICT, type TurnReply } from "./workflows/turnClassifier";
@@ -351,6 +352,8 @@ export class AgentRuntime {
           store,
           ai: dependencies.aiService,
           cwd: this.getProjectRoot() ?? "",
+          onProgress: input.onProgress,
+          writeFile: (path, content) => fileSystemService.writeFile(path, content),
         });
         const run = await engine.runLevels({
           projectId,
@@ -383,6 +386,7 @@ export class AgentRuntime {
       verification: this.verificationEngine,
       checkRunner: dependencies.checkRunner,
       testing: requiredTesting,
+      process: nativeProcessService,
     });
     this.aiService = dependencies.aiService;
     this.orchestrator = new AgentOrchestrator({
@@ -1137,6 +1141,31 @@ export class AgentRuntime {
         useSettingsStore.getState().update("permissionWhitelist", next);
       },
     };
+  }
+
+  async authorizePreviewLaunch(command: string): Promise<"allow" | "deny" | "busy"> {
+    if (this.controller || this.busy) return "busy";
+    const settings = this.getSettings();
+    const permissions = new PermissionManager({
+      mode: sessionModeFromSettings(settings.automaticTools !== false, settings.permissionMode),
+      confirmDestructive: settings.confirmDestructive !== false,
+      registry: this.registry,
+      getProjectRoot: () => this.getProjectRoot(),
+      prompter: this.prompter,
+      allowRules: [...BASELINE_ALLOW_RULES, ...(settings.permissionWhitelist ?? [])],
+      yoloMode: settings.yoloMode === true,
+      onAsk: (request) => {
+        this.setStatus("waiting_approval");
+        this.emit({ type: "permission-required", ...request });
+      },
+      onPermanentGrant: this.permissionSession(settings).onPermanentGrant,
+    });
+    const decision = await permissions.authorize("start_process", { command });
+    if (!this.controller && !this.busy) {
+      this.setStatus("idle");
+      useAgentStore.getState().setStatus("idle");
+    }
+    return decision === "allow" ? "allow" : "deny";
   }
 
   resolvePermission(id: string, decision: ApprovalDecision) {
