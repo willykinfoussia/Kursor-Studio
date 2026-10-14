@@ -1,11 +1,13 @@
 import type { AIService } from "../AIService";
 import { routeModels } from "../routing";
 import { listAvailableModels } from "../config";
+import { skillRegistry } from "../skills/SkillRegistry";
 import type { AgentEvent, AgentMessage, AIModel } from "../types";
 import { collectKnowledgeCatalog } from "./catalog";
 import { collectProductExcerpts, type FileExcerpt } from "./excerpts";
-import { shouldSkipKnowledgeReflect, hasProductFileChanges } from "./gates";
+import { shouldSkipKnowledgeReflect, type KnowledgeReflectMode } from "./gates";
 import { knowledgeProposalStore, type KnowledgeProposalStore } from "./KnowledgeProposalStore";
+import { enrichCatalogExcerpts } from "./matchCatalog";
 import {
   buildKnowledgeReflectUserPrompt,
   buildSpecAuthorUserPrompt,
@@ -13,8 +15,8 @@ import {
   SPEC_AUTHOR_SYSTEM,
   type KnowledgeCatalogItem,
 } from "./prompt";
+import { adoptProductSpec, reconcileKnowledge } from "./reconcile";
 import { hasKnowledgeActions, parseKnowledgeReflectResult } from "./schema";
-import { adoptProductSpec, withFallbackProductSpec } from "./fallbackSpec";
 import {
   authorFileName,
   ensureSpecFrontmatter,
@@ -36,6 +38,7 @@ export interface KnowledgeReflectorOptions {
   catalog?: typeof collectKnowledgeCatalog;
   applyProposal?: (proposal: KnowledgeProposal) => Promise<void>;
   readFile?: (path: string) => Promise<string>;
+  readSkill?: (id: string) => Promise<string | undefined>;
 }
 
 function errorText(error: unknown): string {
@@ -55,6 +58,7 @@ export class KnowledgeReflector {
   private readonly catalog: typeof collectKnowledgeCatalog;
   private readonly applyProposal?: (proposal: KnowledgeProposal) => Promise<void>;
   private readonly readFile?: (path: string) => Promise<string>;
+  private readonly readSkill: (id: string) => Promise<string | undefined>;
 
   constructor(options: KnowledgeReflectorOptions = {}) {
     this.ai = options.ai;
@@ -67,6 +71,10 @@ export class KnowledgeReflector {
     this.catalog = options.catalog ?? collectKnowledgeCatalog;
     this.applyProposal = options.applyProposal;
     this.readFile = options.readFile;
+    this.readSkill = options.readSkill ?? (async (id) => {
+      const skill = await skillRegistry.resolve(id, { includeProject: true });
+      return skill?.instructions;
+    });
   }
 
   bindAi(ai: AIService) {
@@ -104,12 +112,19 @@ export class KnowledgeReflector {
     this.emit({ type: "knowledge-reflect-started", runId: input.runId });
     try {
       const excerpts = await this.loadExcerpts(input.filesChanged);
-      const catalog = await this.catalog(Boolean(input.projectId));
+      const rawCatalog = await this.catalog(Boolean(input.projectId));
+      const catalog = await enrichCatalogExcerpts(rawCatalog, input, this.readFile, this.readSkill);
       const result = await this.completeText(
         KNOWLEDGE_REFLECT_SYSTEM,
         buildKnowledgeReflectUserPrompt(input, catalog, excerpts),
       );
-      const parsed = await this.ensureProductSpec(parseKnowledgeReflectResult(result), input, catalog, excerpts);
+      const parsed = await this.ensureProductSpec(
+        parseKnowledgeReflectResult(result),
+        input,
+        catalog,
+        excerpts,
+        gate.mode,
+      );
       const now = this.now();
       const proposal: KnowledgeProposal = {
         id: this.id(),
@@ -164,16 +179,18 @@ export class KnowledgeReflector {
     input: KnowledgeReflectInput,
     catalog: readonly KnowledgeCatalogItem[],
     excerpts: readonly FileExcerpt[],
+    mode: KnowledgeReflectMode,
   ): Promise<KnowledgeReflectResult> {
-    if (input.planUnfinished || !hasProductFileChanges(input.filesChanged)) return parsed;
-    if (hasSubstantialProductSpec(parsed)) return withFallbackProductSpec(parsed, input);
+    const refined = reconcileKnowledge(parsed, catalog, input, mode);
+    if (mode === "skills" || hasSubstantialProductSpec(refined)) return refined;
     try {
       const authored = await this.authorProductSpec(input, catalog, excerpts);
-      if (authored) return adoptProductSpec(parsed, authored, input);
+      if (!authored) return refined;
+      return reconcileKnowledge(adoptProductSpec(parsed, authored, input), catalog, input, mode);
     } catch {
-      // The author model failed; the structured skeleton still records the run.
+      // The author model failed; a thin spec is left out.
+      return refined;
     }
-    return withFallbackProductSpec(parsed, input);
   }
 
   private async authorProductSpec(

@@ -240,4 +240,25 @@ describe("applyProposal", () => {
     expect(project.files.has(".kursor/skills/search-first/SKILL.md")).toBe(true);
     expect(files.files.size).toBe(0);
   });
+
+  it("does not write a skill whose instructions are empty", async () => {
+    const project = memoryProject();
+    const skills = new SkillDocumentService({ project, user: memoryUser(), builtins: () => [] });
+    const applied = await applyProposal(proposal({
+      payload: {
+        summary: "Thin skill",
+        skillActions: [{
+          id: "skill:0:search-first",
+          action: "create",
+          skillId: "search-first",
+          scope: "project",
+          rationale: "Search before writing.",
+          draft: { name: "Search first", description: "Use when searching", triggers: [], instructions: "  " },
+        }],
+        specActions: [],
+      },
+    }), { skills, files: memoryGraph() });
+    expect(applied.skills).toEqual([]);
+    expect(project.files.has(".kursor/skills/search-first/SKILL.md")).toBe(false);
+  });
 });

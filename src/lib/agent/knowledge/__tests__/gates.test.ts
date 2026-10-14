@@ -53,6 +53,29 @@ describe("shouldSkipKnowledgeReflect", () => {
       ...base,
       goal: "add auth",
       planUnfinished: false,
-    })).toEqual({ skip: false });
+    })).toEqual({ skip: false, mode: "full" });
+  });
+
+  it("runs a durable discussion in skills mode", () => {
+    const paragraph = "Search existing helpers before adding a new module. ".repeat(12);
+    expect(shouldSkipKnowledgeReflect({
+      ...base,
+      toolNames: ["read_file"],
+      filesChanged: [],
+      messages: [
+        { role: "user", content: paragraph },
+        { role: "assistant", content: paragraph },
+      ],
+    })).toEqual({ skip: false, mode: "skills" });
+    expect(shouldSkipKnowledgeReflect({
+      ...base,
+      planUnfinished: true,
+      messages: [
+        { role: "user", content: "One" },
+        { role: "assistant", content: "Two" },
+        { role: "user", content: "Three" },
+        { role: "assistant", content: "Four" },
+      ],
+    })).toEqual({ skip: false, mode: "skills" });
   });
 });

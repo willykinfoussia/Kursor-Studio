@@ -5,12 +5,24 @@ import { extractJsonObject, specFileNameFromLabel } from "./schema";
 
 const PROJECT_KINDS = new Set<string>(PROJECT_GROUP_KINDS);
 
-const SECTION_CHECKS = [
-  /intention|intent|philosophie|philosophy/i,
-  /architecture/i,
-  /structure/i,
-  /d[ée]cisions?|decisions?|contraintes?|constraints?/i,
+const BOILERPLATE = [
+  /ces modules réalisent l['’]intention/i,
+  /these modules carry the intention/i,
+  /les contraintes durables sont celles que le code modifié rend visibles/i,
+  /the lasting constraints are the ones the changed code makes visible/i,
 ];
+
+type SpecSectionName = "intention" | "architecture" | "structure" | "decisions" | "files";
+
+const SECTION_HEADINGS: { name: SpecSectionName; pattern: RegExp }[] = [
+  { name: "intention", pattern: /^(?:intention|intent|philosophie|philosophy)\b/i },
+  { name: "architecture", pattern: /^architecture\b/i },
+  { name: "structure", pattern: /^structure\b/i },
+  { name: "decisions", pattern: /^(?:d[ée]cisions?|decisions?|contraintes?|constraints?)\b/i },
+  { name: "files", pattern: /^(?:fichiers|files)\b/i },
+];
+
+const PROSE_SECTIONS: SpecSectionName[] = ["intention", "architecture", "structure", "decisions"];
 
 export function projectSpecKind(value: string | undefined): string {
   const kind = value?.trim().toLowerCase() ?? "";
@@ -55,22 +67,53 @@ export function isFileListOnly(content: string): boolean {
   );
 }
 
+function specSections(body: string): Map<SpecSectionName, string> {
+  const buffers = new Map<SpecSectionName, string[]>();
+  let current: SpecSectionName | null = null;
+  for (const line of body.split(/\n/)) {
+    const heading = line.match(/^#{1,6}\s+(.+?)\s*$/);
+    if (heading) {
+      const title = heading[1].trim();
+      current = SECTION_HEADINGS.find((item) => item.pattern.test(title))?.name ?? null;
+      if (current && !buffers.has(current)) buffers.set(current, []);
+      continue;
+    }
+    if (!current) continue;
+    const list = buffers.get(current) ?? [];
+    list.push(line);
+    buffers.set(current, list);
+  }
+  const sections = new Map<SpecSectionName, string>();
+  for (const [name, lines] of buffers) sections.set(name, lines.join("\n").trim());
+  return sections;
+}
+
+function isRealSentence(text: string): boolean {
+  const prose = text
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^[-*]\s+`?[\w./\\-]+`?(?:\s+[—-].*)?$/.test(line))
+    .join(" ")
+    .trim();
+  if (!prose || BOILERPLATE.some((pattern) => pattern.test(prose))) return false;
+  const words = prose.split(/\s+/).filter(Boolean);
+  return prose.length >= 40 && words.length >= 6 && /[.!?…]/.test(prose);
+}
+
 export function isSubstantialSpec(content: string): boolean {
   const body = parseSpecFrontmatter(content).body.trim();
-  if (body.length < 80) return false;
   if (isFileListOnly(content)) return false;
-  return SECTION_CHECKS.filter((pattern) => pattern.test(body)).length >= 3;
+  if (BOILERPLATE.some((pattern) => pattern.test(body))) return false;
+  const sections = specSections(body);
+  const required: SpecSectionName[] = [...PROSE_SECTIONS, "files"];
+  if (required.some((name) => !(sections.get(name) ?? "").trim())) return false;
+  return PROSE_SECTIONS.every((name) => isRealSentence(sections.get(name) ?? ""));
 }
 
 export function hasSubstantialProductSpec(result: { specActions: { action: string; content?: string }[] }): boolean {
   return result.specActions.some((action) =>
     (action.action === "create" || action.action === "update") && isSubstantialSpec(action.content ?? ""),
   );
-}
-
-export function goalUsesFrench(goal: string): boolean {
-  return /[àâäéèêëïîôùûüçœ]/i.test(goal)
-    || /\b(le|la|les|des|une|un|pour|avec|dans|sur|cette|am[eé]liore|ajoute|rajoute)\b/i.test(goal);
 }
 
 export interface SpecAuthorDraft {

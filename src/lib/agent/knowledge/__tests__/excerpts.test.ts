@@ -22,11 +22,26 @@ describe("collectProductExcerpts", () => {
     expect(excerpts[0]?.content).toContain("export function App");
   });
 
-  it("reads at most eight files", async () => {
-    const paths = Array.from({ length: 10 }, (_, index) => `src/file-${index}.ts`);
-    const excerpts = await collectProductExcerpts(paths, async (path) => `export const id = ${path}`);
+  it("reads at most eight files and at most three per directory", async () => {
+    const paths = ["src", "lib", "app", "pages"].flatMap((dir) =>
+      Array.from({ length: 4 }, (_, index) => `${dir}/file-${index}.ts`),
+    );
+    const excerpts = await collectProductExcerpts(paths, async (path) => `export const id = "${path}"`);
     expect(excerpts).toHaveLength(MAX_EXCERPT_FILES);
-    expect(excerpts[0]?.path).toBe("src/file-0.ts");
-    expect(excerpts.at(-1)?.path).toBe("src/file-7.ts");
+    for (const dir of ["src", "lib", "app", "pages"]) {
+      expect(excerpts.filter((item) => item.path.startsWith(`${dir}/`)).length).toBeLessThanOrEqual(3);
+    }
+    expect(excerpts.some((item) => item.path === "lib/file-0.ts")).toBe(true);
+  });
+
+  it("keeps the end of a long file", async () => {
+    const marker = "END_OF_FILE_MARKER";
+    const excerpts = await collectProductExcerpts(
+      ["src/long.ts"],
+      async () => `${"A".repeat(2200)}${marker}`,
+    );
+    expect(excerpts[0]?.content.startsWith("A")).toBe(true);
+    expect(excerpts[0]?.content).toContain("…");
+    expect(excerpts[0]?.content).toContain(marker);
   });
 });

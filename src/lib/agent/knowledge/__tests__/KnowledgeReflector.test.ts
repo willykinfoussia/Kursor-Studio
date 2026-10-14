@@ -85,7 +85,14 @@ describe("KnowledgeReflector", () => {
               skillId: "jwt-refresh",
               scope: "project",
               rationale: "Reusable auth procedure",
-              draft: { name: "JWT refresh", description: "Use when adding auth", instructions: "Rotate refresh tokens." },
+              draft: {
+                name: "JWT refresh",
+                description: "Use when adding token refresh to an API",
+                instructions: [
+                  "- Look for an existing token rotation helper before adding another.",
+                  "- Rotate the refresh token on every use and revoke the previous one.",
+                ].join("\n"),
+              },
             }],
             specActions: [],
           }),
@@ -110,7 +117,7 @@ describe("KnowledgeReflector", () => {
       "knowledge-reflect-started",
       "knowledge-reflect-completed",
     ]);
-    expect(events[1]).toMatchObject({ skillCount: 1, specCount: 1, proposalId: "kp-1" });
+    expect(events[1]).toMatchObject({ skillCount: 1, specCount: 0, proposalId: "kp-1" });
   });
 
   it("skips reflection while the plan is unfinished", async () => {
@@ -146,14 +153,18 @@ describe("KnowledgeReflector", () => {
     });
   });
 
-  it("falls back to one project spec when implementation produced no spec actions", async () => {
+  it("leaves the run without a spec when the author returns nothing substantial", async () => {
     const events: AgentEvent[] = [];
     const store = createMemoryKnowledgeProposalStore();
     const applied: string[] = [];
+    let calls = 0;
     const reflector = new KnowledgeReflector({
       ai: {
         streamChat: async () => ({ events: (async function* () {})() }),
-        completeText: async () => ({ text: '{"summary":"Nothing durable","skillActions":[],"specActions":[]}' }),
+        completeText: async () => {
+          calls += 1;
+          return { text: '{"summary":"Nothing durable","skillActions":[],"specActions":[]}' };
+        },
       },
       emit: (event) => events.push(event),
       store,
@@ -168,25 +179,15 @@ describe("KnowledgeReflector", () => {
       goal: "rajoute une page pour le foot aussi",
       filesChanged: ["src/pages/FootballExercisesPage.tsx"],
     }));
-    expect(proposal?.payload.specActions).toHaveLength(1);
-    expect(proposal?.payload.specActions[0]).toMatchObject({
-      action: "create",
-      kind: "architecture",
-      fileName: "rajoute-une-page-pour-le-foot-aussi.md",
-    });
-    const content = proposal?.payload.specActions[0]?.content ?? "";
-    expect(content).toContain("## Intention");
-    expect(content).toContain("## Architecture");
-    expect(content).toContain("## Structure");
-    expect(content).toContain("src/pages/FootballExercisesPage.tsx");
-    expect(content).not.toContain("Files touched");
+    expect(calls).toBe(2);
+    expect(proposal?.payload.specActions).toEqual([]);
     expect(proposal?.payload.skillActions).toEqual([]);
-    expect(applied).toEqual(["kp-fallback"]);
+    expect(applied).toEqual([]);
     expect(events[1]).toMatchObject({
       type: "knowledge-reflect-completed",
       proposalId: "kp-fallback",
       skillCount: 0,
-      specCount: 1,
+      specCount: 0,
     });
   });
 
@@ -286,10 +287,13 @@ describe("KnowledgeReflector", () => {
                 "Les cartes, le panier et le formulaire partagent un seul état.",
                 "",
                 "## Structure",
-                "App.tsx compose les trois composants.",
+                "App.tsx compose les cartes, le panier et le formulaire de commande.",
                 "",
                 "## Décisions",
                 "Aucun état de commande ne vit dans le CSS.",
+                "",
+                "## Fichiers",
+                "- `frontend/src/App.tsx` — compose les trois vues.",
               ].join("\n"),
             }),
           };
@@ -396,5 +400,121 @@ describe("KnowledgeReflector", () => {
       reason: "failed",
     });
     expect((events.at(-1) as { error?: string }).error).toMatch(/gateway/);
+  });
+
+  it("updates the catalog spec whose excerpt covers the change", async () => {
+    let prompt = "";
+    const specPath = ".kursor/specs/project/technical/auth.md";
+    const reflector = new KnowledgeReflector({
+      ai: {
+        streamChat: async () => ({ events: (async function* () {})() }),
+        completeText: async (messages) => {
+          prompt = messages[0]?.content ?? "";
+          return {
+            text: JSON.stringify({
+              summary: "Auth",
+              skillActions: [],
+              specActions: [{
+                action: "create",
+                scope: "project",
+                fileName: "notes.md",
+                kind: "architecture",
+                content: [
+                  "# Auth",
+                  "",
+                  "## Intention",
+                  "Sessions stay valid without asking for the password on every request.",
+                  "",
+                  "## Architecture",
+                  "The client keeps a short-lived access token and rotates a refresh token.",
+                  "",
+                  "## Structure",
+                  "The auth module owns issue, rotation, and revocation of refresh tokens.",
+                  "",
+                  "## Decisions",
+                  "Refresh tokens are rotated on every use so a stolen token cannot be replayed.",
+                  "",
+                  "## Fichiers",
+                  "- `src/auth.ts` — issues and rotates refresh tokens.",
+                ].join("\n"),
+              }],
+            }),
+          };
+        },
+      },
+      emit: () => undefined,
+      store: createMemoryKnowledgeProposalStore(),
+      catalog: async () => [{
+        id: specPath,
+        kind: "spec" as const,
+        path: specPath,
+        scope: "project",
+        title: "Auth",
+        description: "technical",
+        tokens: ["auth", "refresh", "token"],
+      }],
+      getModels: () => ({ ordered: AI_MODELS }),
+      readFile: async (path) => path.endsWith("auth.md")
+        ? "Refresh tokens rotate on every successful request in this service."
+        : "export const auth = true",
+    });
+    const proposal = await reflector.run(input());
+    expect(prompt).toContain("Refresh tokens rotate on every successful request");
+    expect(proposal?.payload.specActions[0]).toMatchObject({
+      action: "update",
+      path: specPath,
+    });
+  });
+
+  it("keeps a skill from a durable discussion and drops the spec", async () => {
+    let calls = 0;
+    const paragraph = "Search the repository for an existing helper before adding a new module. ".repeat(8);
+    const reflector = new KnowledgeReflector({
+      ai: {
+        streamChat: async () => ({ events: (async function* () {})() }),
+        completeText: async () => {
+          calls += 1;
+          return {
+            text: JSON.stringify({
+              summary: "Search procedure",
+              skillActions: [{
+                action: "create",
+                skillId: "search-first",
+                scope: "project",
+                rationale: "Reusable search",
+                draft: {
+                  name: "Search first",
+                  description: "Use when searching a repository before writing a helper",
+                  instructions: [
+                    "- Search the repository for an existing helper before adding one.",
+                    "- Extend that helper when it already covers the case.",
+                  ].join("\n"),
+                },
+              }],
+              specActions: [{
+                action: "create",
+                scope: "project",
+                fileName: "search.md",
+                content: "# Search\n\n## Intention\nSearch first.\n",
+              }],
+            }),
+          };
+        },
+      },
+      emit: () => undefined,
+      store: createMemoryKnowledgeProposalStore(),
+      catalog: async () => [],
+      getModels: () => ({ ordered: AI_MODELS }),
+    });
+    const proposal = await reflector.run(input({
+      filesChanged: [],
+      messages: [
+        { role: "user", content: paragraph },
+        { role: "assistant", content: paragraph },
+      ],
+    }));
+    expect(calls).toBe(1);
+    expect(proposal?.payload.skillActions).toHaveLength(1);
+    expect(proposal?.payload.specActions).toEqual([]);
   });
 });

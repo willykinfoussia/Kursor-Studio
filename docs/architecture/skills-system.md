@@ -224,9 +224,11 @@ Sous-agents (`explore` / `implement` / `review`) ont aussi `load_skill` / `check
 
 Après un run parent **completed**, `AgentRuntime` lance `KnowledgeReflector.schedule` en fire-and-forget (pas pendant le reflect lui-même). Un LLM cheap (`completeText`) reçoit le catalogue skills/specs + un clip de la conversation, et propose JSON `skillActions` / `specActions`.
 
+Un skill est une procédure qui resterait juste dans un autre dépôt (`Use when`, au moins deux étapes). Une spec est l’architecture de ce dépôt, en cinq sections de prose. Le catalogue joint un extrait des specs et des skills qui recoupent le goal : un `create` qui correspond à une spec déjà là devient un `update`. Si l’auteur ne produit pas une spec substantielle, rien n’est écrit à sa place. Une discussion durable sans fichier produit, ou un plan encore ouvert, ne produit que des skills.
+
 - **Jamais d’écriture** sans Accept dans la carte timeline
 - Setting `knowledgeReflectEnabled` (défaut on) : « Suggest skills & specs after runs »
-- Gates skip : disabled, tour reflector, in-flight même conversation, run trivial (`< 2` messages utiles, ou aucun outil mutant **et** goal court), pas de projet, pas de LLM
+- Gates skip : disabled, tour reflector, in-flight même conversation, moins de 2 messages utiles, pas de projet, pas de LLM. Mode complet si des fichiers produit ont changé et le plan est fini. Mode skills si la conversation est durable (480 caractères ou 4 messages) sans ces fichiers, ou pendant un plan inachevé. Sinon skip `not-implementation`.
 - Persist SQLite `knowledge_proposals` (`pending` → Accept `applied` / Reject `rejected`)
 - Apply : `skillDocuments.create` / `update` ; specs via `writeNewSpec` / write / delete / reorganize + `graphService.updateFile`
 - Events Pipeline : `knowledge-reflect-started` | `skipped` | `completed` (nœud après Result)

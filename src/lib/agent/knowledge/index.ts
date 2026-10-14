@@ -8,15 +8,20 @@ export {
   SPEC_AUTHOR_SYSTEM,
 } from "./prompt";
 export { parseKnowledgeReflectResult, hasKnowledgeActions, extractJsonObject, specFileNameFromLabel } from "./schema";
-export { withFallbackProductSpec, fallbackProductSpec, adoptProductSpec } from "./fallbackSpec";
+export { adoptProductSpec, reconcileKnowledge } from "./reconcile";
 export { isSubstantialSpec, ensureSpecFrontmatter } from "./specDocument";
+export { isReusableSkill } from "./skillQuality";
 export {
   shouldSkipKnowledgeReflect,
   hasProductFileChanges,
   isProductImplementationPath,
+  isDurableConversation,
   MIN_USEFUL_MESSAGES,
+  MIN_DURABLE_CHARS,
+  MIN_DURABLE_MESSAGES,
   SHORT_GOAL_MAX_TOKENS,
 } from "./gates";
+export type { KnowledgeReflectMode } from "./gates";
 export { collectKnowledgeCatalog } from "./catalog";
 export { applyProposal } from "./applyProposal";
 export type { ApplyProposalDeps, ApplyProposalSelection } from "./applyProposal";

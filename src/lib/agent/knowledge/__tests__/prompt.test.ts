@@ -40,17 +40,27 @@ describe("knowledge reflect prompt", () => {
     expect(clipText("abcdefghijk", 8).endsWith("…")).toBe(true);
     expect(formatKnowledgeCatalog([])).toBe("");
     expect(buildKnowledgeReflectUserPrompt(input, [])).toContain("(empty catalog)");
+    expect(formatKnowledgeCatalog([{
+      id: "auth.md",
+      kind: "spec",
+      path: ".kursor/specs/project/technical/auth.md",
+      title: "Auth",
+      description: "technical",
+      excerpt: "Refresh tokens rotate on every use.",
+    }])).toContain("Refresh tokens rotate on every use.");
   });
 
   it("asks for a spec after product files unless the catalog already covers it", () => {
-    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("MUST propose a spec create");
+    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("another repository");
     expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("update that spec instead of creating another");
-    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Prefer empty arrays only when nothing durable was learned and no product files were implemented.");
+    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Prefer empty arrays when nothing durable was learned.");
+    expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Use when");
     expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Intention");
     expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Architecture");
     expect(KNOWLEDGE_REFLECT_SYSTEM).toContain("Structure");
     expect(SPEC_AUTHOR_SYSTEM).toContain("durable project specification");
     expect(SPEC_AUTHOR_SYSTEM).toContain("## Décisions");
+    expect(SPEC_AUTHOR_SYSTEM).toContain("## Fichiers");
   });
 
   it("includes excerpts of the changed files", () => {

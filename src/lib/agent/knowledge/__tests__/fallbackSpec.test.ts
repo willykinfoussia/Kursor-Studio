@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { withFallbackProductSpec } from "../fallbackSpec";
+import { graphTokens } from "../../../graph/tokenize";
+import { bindSkillCreates, bindSpecCreates } from "../matchCatalog";
+import { reconcileKnowledge } from "../reconcile";
+import { isSubstantialSpec } from "../specDocument";
+import type { SkillProposalAction, SpecProposalAction } from "../types";
 
 const architecture = [
   "# Auth",
@@ -11,89 +15,129 @@ const architecture = [
   "The client keeps a short-lived access token and rotates a refresh token.",
   "",
   "## Structure",
-  "src/auth.ts owns issue, rotation, and revocation.",
+  "The auth module owns issue, rotation, and revocation of refresh tokens.",
   "",
   "## Decisions",
   "Refresh tokens are rotated on every use so a stolen token cannot be replayed.",
+  "",
+  "## Fichiers",
+  "- `src/auth.ts` — issues and rotates refresh tokens.",
 ].join("\n");
 
-describe("withFallbackProductSpec", () => {
-  it("keeps a substantial spec", () => {
+function specAction(content: string, fileName = "auth.md"): SpecProposalAction {
+  return {
+    id: "spec:0:auth.md",
+    action: "create",
+    scope: "project",
+    rationale: "Auth constraints",
+    fileName,
+    content,
+  };
+}
+
+const reusableSkill: SkillProposalAction = {
+  id: "skill:0:search-first",
+  action: "create",
+  skillId: "search-first",
+  scope: "project",
+  rationale: "Reusable search",
+  draft: {
+    name: "Search first",
+    description: "Use when searching a repository before writing a helper",
+    triggers: ["search"],
+    instructions: [
+      "- Search the repository for an existing helper before adding one.",
+      "- Extend that helper when it already covers the case.",
+    ].join("\n"),
+  },
+};
+
+describe("knowledge quality", () => {
+  it("keeps a spec that describes the system in five sections", () => {
+    expect(isSubstantialSpec(architecture)).toBe(true);
     const parsed = {
       summary: "Auth",
       skillActions: [],
-      specActions: [{
-        id: "spec:0:auth.md",
-        action: "create" as const,
-        scope: "project" as const,
-        rationale: "Auth constraints",
-        fileName: "auth.md",
-        content: architecture,
-      }],
+      specActions: [specAction(architecture)],
     };
-    expect(withFallbackProductSpec(parsed, {
-      goal: "add auth",
-      filesChanged: ["src/auth.ts"],
-    })).toBe(parsed);
+    expect(reconcileKnowledge(parsed, [], { goal: "add auth", filesChanged: ["src/auth.ts"] }, "full")).toEqual(parsed);
   });
 
-  it("does not invent a spec while the plan is unfinished", () => {
-    const parsed = { summary: "", skillActions: [], specActions: [] };
-    expect(withFallbackProductSpec(parsed, {
-      goal: "add football pages",
-      filesChanged: ["src/pages/Football.tsx"],
-      planUnfinished: true,
-    }).specActions).toEqual([]);
-  });
-
-  it("injects one architecture spec after product files change", () => {
-    const next = withFallbackProductSpec(
-      { summary: "", skillActions: [], specActions: [] },
-      { goal: "Football pages", filesChanged: ["src/pages/Football.tsx", ".kursor/plans/x.plan.md"] },
+  it("rejects a file list and the generated skeleton phrases", () => {
+    expect(isSubstantialSpec("# UI\n\nFiles touched:\n- frontend/src/App.tsx")).toBe(false);
+    const skeleton = architecture.replace(
+      "The client keeps a short-lived access token and rotates a refresh token.",
+      "These modules carry the intention above.",
     );
-    expect(next.specActions).toHaveLength(1);
-    expect(next.specActions[0]).toMatchObject({
-      action: "create",
-      kind: "architecture",
-      fileName: "football-pages.md",
-    });
-    const content = next.specActions[0]?.content ?? "";
-    expect(content).toContain("## Intention");
-    expect(content).toContain("## Architecture");
-    expect(content).toContain("## Structure");
-    expect(content).toContain("type: architecture");
-    expect(content).toContain("src/pages/Football.tsx");
-    expect(content).not.toContain(".kursor/plans");
-    expect(content).not.toContain("Files touched");
-  });
-
-  it("replaces a file list with an architecture spec", () => {
-    const next = withFallbackProductSpec({
+    expect(isSubstantialSpec(skeleton)).toBe(false);
+    const next = reconcileKnowledge({
       summary: "ui",
       skillActions: [],
-      specActions: [{
-        id: "spec:0:ui.md",
-        action: "create" as const,
-        scope: "project" as const,
-        kind: "documentation",
-        fileName: "ui.md",
-        rationale: "thin",
-        content: "# améliore l'UI du site\n\nFiles touched:\n- frontend/src/App.tsx",
+      specActions: [specAction("# UI\n\nFiles touched:\n- frontend/src/App.tsx", "ui.md")],
+    }, [], { goal: "améliore l'UI du site", filesChanged: ["frontend/src/App.tsx"] }, "full");
+    expect(next.specActions).toEqual([]);
+  });
+
+  it("drops specs in skills mode and keeps a reusable procedure", () => {
+    const next = reconcileKnowledge({
+      summary: "Search",
+      skillActions: [reusableSkill],
+      specActions: [specAction(architecture)],
+    }, [], { goal: "how should we search", filesChanged: [] }, "skills");
+    expect(next.specActions).toEqual([]);
+    expect(next.skillActions).toHaveLength(1);
+  });
+
+  it("drops a one-line skill", () => {
+    const next = reconcileKnowledge({
+      summary: "thin",
+      skillActions: [{
+        ...reusableSkill,
+        draft: { ...reusableSkill.draft!, description: "Use when searching", instructions: "Search first." },
       }],
-    }, {
-      goal: "améliore l'UI du site",
-      filesChanged: ["frontend/src/App.tsx", "frontend/src/index.css"],
+      specActions: [],
+    }, [], { goal: "search", filesChanged: [] }, "skills");
+    expect(next.skillActions).toEqual([]);
+  });
+
+  it("turns a create into an update of the matching spec and keeps one", () => {
+    const catalog = [{
+      id: ".kursor/specs/project/technical/auth.md",
+      kind: "spec" as const,
+      path: ".kursor/specs/project/technical/auth.md",
+      scope: "project",
+      title: "Auth",
+      tokens: ["auth", "refresh", "token"],
+    }];
+    const second = specAction(architecture, "notes.md");
+    second.id = "spec:1:notes.md";
+    const bound = bindSpecCreates([specAction(architecture, "notes.md"), second], catalog);
+    expect(bound).toHaveLength(1);
+    expect(bound[0]).toMatchObject({
+      action: "update",
+      path: ".kursor/specs/project/technical/auth.md",
     });
-    expect(next.specActions).toHaveLength(1);
-    const content = next.specActions[0]?.content ?? "";
-    expect(content).toContain("## Intention");
-    expect(content).toContain("## Architecture");
-    expect(content).toContain("## Structure");
-    expect(content).toContain("## Décisions");
-    expect(content).toContain("frontend/src/App.tsx");
-    expect(content).toContain("frontend/src/index.css");
-    expect(content).toContain("Composant d'interface App");
-    expect(content).not.toContain("Files touched");
-    expect(next.specActions[0]).toMatchObject({ fileName: "ui.md", kind: "architecture" });
+  });
+
+  it("updates a skill with the same id and drops a description that repeats another skill", () => {
+    const existing = "Use when searching the repository index before writing a helper";
+    const catalog = [{
+      id: "search-first",
+      kind: "skill" as const,
+      description: existing,
+      tokens: graphTokens(`search-first ${existing}`),
+    }];
+    const sameId = bindSkillCreates([reusableSkill], catalog);
+    expect(sameId[0]?.action).toBe("update");
+    const overlap = bindSkillCreates([{
+      ...reusableSkill,
+      id: "skill:0:repo-search",
+      skillId: "repo-search",
+      draft: {
+        ...reusableSkill.draft!,
+        description: "Use when searching the repository index before writing a helper module",
+      },
+    }], catalog);
+    expect(overlap).toEqual([]);
   });
 });

@@ -308,7 +308,7 @@ Les specs **account** ne sont **pas** dans la partition RAG projet.
 
 ## 7. Post-run reflection (propose-only)
 
-Après un run **completed**, `KnowledgeReflector` analyse le transcript (catalogue skills + nœuds specs injectés, pas d’outils FS) et propose créations / mises à jour / suppressions / réorganisations. L’utilisateur valide dans la carte timeline (Accept selected / Reject). Aucune écriture automatique.
+Après un run **completed**, `KnowledgeReflector` analyse le transcript. Le catalogue inclut un extrait des specs et des instructions de skills qui recoupent le goal. Une spec n’est retenue que si elle décrit l’architecture en cinq sections ; un `create` qui correspond à une spec déjà là devient un `update`. Un skill n’est retenu que si la procédure resterait juste dans un autre dépôt. Une discussion durable sans fichier produit ne produit que des skills. Aucun squelette généré ne remplace une spec trop mince. L’utilisateur valide dans la carte timeline (Accept selected / Reject). Aucune écriture automatique.
 
 - Spec create → `writeNewSpec` puis overlay du corps markdown
 - Spec update → write du path existant

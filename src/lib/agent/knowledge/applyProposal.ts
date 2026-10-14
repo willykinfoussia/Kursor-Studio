@@ -28,22 +28,25 @@ function selected<T extends { id: string }>(items: T[], ids?: string[]) {
   return items.filter((item) => allow.has(item.id));
 }
 
-async function applySkill(action: SkillProposalAction, skills: SkillDocumentService) {
+async function applySkill(action: SkillProposalAction, skills: SkillDocumentService): Promise<boolean> {
+  const instructions = action.draft?.instructions?.trim() ?? "";
+  if (!instructions) return false;
   const draft = {
     id: action.skillId,
     name: action.draft?.name || action.skillId,
     description: action.draft?.description || action.rationale,
     triggers: action.draft?.triggers ?? [],
     allowedTools: action.draft?.allowedTools ?? [],
-    instructions: action.draft?.instructions || action.rationale,
+    instructions,
   };
   const exists = await skills.exists(action.scope, action.skillId);
   if (action.action === "update" && exists) {
     await skills.update(action.scope, draft);
-    return;
+    return true;
   }
   if (exists) await skills.update(action.scope, draft);
   else await skills.create(action.scope, draft);
+  return true;
 }
 
 function writtenSpec(action: SpecProposalAction, content: string): string {
@@ -122,8 +125,7 @@ export async function applyProposal(
   const appliedSkills: string[] = [];
   const appliedSpecs: string[] = [];
   for (const action of selected(proposal.payload.skillActions, selection.skillIds)) {
-    await applySkill(action, skills);
-    appliedSkills.push(action.skillId);
+    if (await applySkill(action, skills)) appliedSkills.push(action.skillId);
   }
   for (const action of selected(proposal.payload.specActions, selection.specIds)) {
     const path = await applySpec(action, deps.files, deps.onSpecChanged);
