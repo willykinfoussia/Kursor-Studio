@@ -7,6 +7,7 @@ import type { WorkflowApprovalRequest } from "../lib/agent/workflows/types";
 import type { HookOutcome } from "../lib/agent/hooks/types";
 import type { AgentConversation, AgentMessage, AgentStatus, AgentStepKind, AgentTask, ToolCall, WorkStatus } from "../types/agent";
 import type { AgentEvent } from "../lib/agent/types";
+import type { ContextUsage } from "../lib/agent/context/usage";
 import { applyAgentEvent, timelineFromMessages, type ConversationItem } from "../lib/agent/conversation";
 import type { AgentInteractionMode } from "../lib/agent/modes";
 
@@ -101,6 +102,7 @@ interface AgentState {
   timeline: ConversationItem[];
   timelines: Record<string, ConversationItem[]>;
   toolHistories: Record<string, ToolCall[]>;
+  contextUsages: Record<string, ContextUsage>;
   taskStartedAt: number | null;
   planMode: boolean;
   agentMode: AgentInteractionMode;
@@ -139,6 +141,7 @@ interface AgentState {
   addPermissionTrace: (trace: PermissionTraceView) => void;
   resolvePermissionTrace: (id: string, status: PermissionTraceView["status"]) => void;
   applyTimelineEvent: (event: AgentEvent) => void;
+  setContextUsage: (conversationId: string, usage: ContextUsage) => void;
   pushArtifactNotice: (text: string, artifactId: string) => void;
   setPlanMode: (planMode: boolean) => void;
   setAgentMode: (agentMode: AgentInteractionMode) => void;
@@ -224,6 +227,7 @@ function emptySession() {
     timeline: [] as ConversationItem[],
     timelines: {} as Record<string, ConversationItem[]>,
     toolHistories: {} as Record<string, ToolCall[]>,
+    contextUsages: {} as Record<string, ContextUsage>,
   };
 }
 
@@ -425,6 +429,9 @@ export const useAgentStore = create<AgentState>((set) => ({
       commandLog: state.commandLog,
     }),
   })),
+  setContextUsage: (conversationId, usage) => set((state) => ({
+    contextUsages: { ...state.contextUsages, [conversationId]: usage },
+  })),
   resetWork: () => set(syncPendingApprovals([])),
   syncActiveMessages: (messages) => set((state) => {
     const nextMessages = messages ?? state.messages;
@@ -491,8 +498,10 @@ export const useAgentStore = create<AgentState>((set) => ({
     const remaining = snapshotActive(state).filter((conversation) => conversation.id !== id);
     const timelines = { ...snapshotTimelines(state) };
     const toolHistories = { ...snapshotToolHistories(state) };
+    const contextUsages = { ...state.contextUsages };
     delete timelines[id];
     delete toolHistories[id];
+    delete contextUsages[id];
     if (remaining.length === 0) {
       const next = createEmptyConversation();
       return {
@@ -503,10 +512,11 @@ export const useAgentStore = create<AgentState>((set) => ({
         timeline: [],
         timelines: {},
         toolHistories: {},
+        contextUsages: {},
       };
     }
     if (id !== state.activeConversationId) {
-      return { conversations: remaining, timelines, toolHistories };
+      return { conversations: remaining, timelines, toolHistories, contextUsages };
     }
     const next = remaining[remaining.length - 1];
     if (!next) return {};
@@ -523,6 +533,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       toolCalls: (toolHistories[next.id] ?? []).map((item) => ({ ...item })),
       timelines,
       toolHistories,
+      contextUsages,
     };
   }),
   reset: () => set(emptySession()),

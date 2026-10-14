@@ -10,6 +10,7 @@ import { fileSystemService } from "../../lib/filesystem/FileSystemService";
 import { useEditorStore } from "../../stores/editorStore";
 import { useFileExplorerStore } from "../../stores/fileExplorerStore";
 import { AgentModePicker } from "./AgentModePicker";
+import { ContextUsage } from "./ContextUsage";
 
 interface FileHit {
   name: string;
@@ -368,6 +369,7 @@ export function AgentComposer({
         <div className="input-actions">
           <AgentModePicker mode={agentMode} onChange={(mode) => onSetMode?.(mode)} />
           <IconButton icon={Paperclip} label="Joindre un fichier" size={14} />
+          <ContextUsage />
           <span className="shortcut-hint">Ctrl ↵</span>
           {isStreaming ? (
             <button className="stop-btn" type="button" onClick={onStop} aria-keyshortcuts="Control+Shift+C">

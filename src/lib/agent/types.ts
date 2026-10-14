@@ -171,7 +171,7 @@ export type AgentEvent =
   | { type: "error"; requestId: string; message: string }
   | { type: "fallback"; fromModel: string; toModel: string; reason: string }
   | { type: "cancelled"; requestId: string }
-  | { type: "context-assembled"; tokensUsed: number; trace: import("./context/types").ContextTraceEntry[]; slices?: import("./context/types").ContextSliceSummary[]; systemPrompt?: string; scope?: "parent" | "subagent" }
+  | { type: "context-assembled"; tokensUsed: number; trace: import("./context/types").ContextTraceEntry[]; slices?: import("./context/types").ContextSliceSummary[]; systemPrompt?: string; scope?: "parent" | "subagent"; usage?: import("./context/usage").ContextUsage; conversationId?: string }
   | { type: "task-started"; taskId: string; title: string }
   | { type: "task-completed"; taskId: string; status: "completed" | "failed" }
   | { type: "skill-selected"; skillId: string; name: string; reason?: string; version?: string }

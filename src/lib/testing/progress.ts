@@ -87,14 +87,28 @@ export interface E2eCapture {
   video: string | null;
 }
 
-export async function findLatestCapture(files?: ContextFileStore): Promise<E2eCapture> {
-  const images: string[] = [];
-  const videos: string[] = [];
-  if (files) {
-    for (const root of ["test-results", "playwright-report"]) {
-      await collectMedia(files, root, 0, images, videos);
-    }
+export interface ListedTestMedia {
+  path: string;
+  name: string;
+  kind: "screenshot" | "video" | "trace";
+}
+
+const MEDIA_ROOTS = ["test-results", "playwright-report"];
+const MAX_MEDIA_DEPTH = 6;
+
+export async function listTestMedia(files?: ContextFileStore): Promise<ListedTestMedia[]> {
+  const found: ListedTestMedia[] = [];
+  if (!files) return found;
+  for (const root of MEDIA_ROOTS) {
+    await walkMedia(files, root, 0, found);
   }
+  return found;
+}
+
+export async function findLatestCapture(files?: ContextFileStore): Promise<E2eCapture> {
+  const media = await listTestMedia(files);
+  const images = media.filter((item) => item.kind === "screenshot").map((item) => item.path);
+  const videos = media.filter((item) => item.kind === "video").map((item) => item.path);
   return { image: preferCapture(images), video: preferCapture(videos) };
 }
 
@@ -252,15 +266,22 @@ function preferCapture(paths: string[]): string | null {
   return pool.sort()[pool.length - 1] ?? null;
 }
 
-async function collectMedia(files: ContextFileStore, dir: string, depth: number, images: string[], videos: string[]) {
-  if (depth > 3) return;
+async function walkMedia(files: ContextFileStore, dir: string, depth: number, found: ListedTestMedia[]) {
+  if (depth > MAX_MEDIA_DEPTH) return;
   const entries = await files.listDirectory(dir).catch(() => []);
   for (const entry of entries) {
     if (entry.kind === "directory") {
-      await collectMedia(files, entry.path, depth + 1, images, videos);
+      await walkMedia(files, entry.path, depth + 1, found);
       continue;
     }
-    if (/\.(png|jpe?g|webp)$/i.test(entry.name)) images.push(entry.path);
-    else if (/\.webm$/i.test(entry.name)) videos.push(entry.path);
+    const kind = mediaKind(entry.name);
+    if (kind) found.push({ path: entry.path, name: entry.name, kind });
   }
+}
+
+function mediaKind(name: string): ListedTestMedia["kind"] | null {
+  if (/\.(png|jpe?g|webp)$/i.test(name)) return "screenshot";
+  if (/\.(webm|mp4)$/i.test(name)) return "video";
+  if (/\.zip$/i.test(name) || /^trace\./i.test(name)) return "trace";
+  return null;
 }

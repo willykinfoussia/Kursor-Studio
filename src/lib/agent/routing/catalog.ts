@@ -2,13 +2,18 @@ import { DEFAULT_CUSTOM_PROFILE, type ModelProfile } from "./types";
 
 /** Explicit profiles. Never infer capabilities from the model id or display name. */
 export const BUILTIN_MODEL_PROFILES: Record<string, ModelProfile> = {
+  "nvidia/nemotron-3.5-lightning-free": {
+    capabilities: ["coding", "tools", "fast"],
+    usdPer1kInput: 0,
+    usdPer1kOutput: 0,
+  },
   "poolside/laguna-s-2.1-free": {
     capabilities: ["coding", "tools", "fast"],
     usdPer1kInput: 0,
     usdPer1kOutput: 0,
   },
-  "inclusionai/ling-3.0-flash-sante-free": {
-    capabilities: ["coding", "tools", "fast"],
+  "stealth/glyph-cluster": {
+    capabilities: ["coding", "tools"],
     usdPer1kInput: 0,
     usdPer1kOutput: 0,
   },

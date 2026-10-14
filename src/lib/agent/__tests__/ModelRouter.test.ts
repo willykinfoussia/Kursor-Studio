@@ -3,17 +3,18 @@ import { AI_MODELS } from "../config";
 import { ModelRouter } from "../ModelRouter";
 
 describe("ModelRouter", () => {
-  it("returns Laguna first by default", () => {
+  it("returns Nemotron first by default", () => {
     const models = new ModelRouter().getModels();
-    expect(models[0].id).toBe("poolside/laguna-s-2.1-free");
+    expect(models[0].id).toBe("nvidia/nemotron-3.5-lightning-free");
     expect(models.map((model) => model.id)).toEqual(AI_MODELS.map((model) => model.id));
   });
 
   it("uses the configured modelOrder as fallback sequence", () => {
     const order = [
       "deepseek/deepseek-v4-flash-0731",
-      "inclusionai/ling-3.0-flash-sante-free",
+      "stealth/glyph-cluster",
       "poolside/laguna-s-2.1-free",
+      "nvidia/nemotron-3.5-lightning-free",
     ];
     const models = new ModelRouter().getModels(order);
     expect(models.map((model) => model.id)).toEqual(order);
@@ -23,8 +24,9 @@ describe("ModelRouter", () => {
     const models = new ModelRouter().getModels(["deepseek/deepseek-v4-flash-0731"]);
     expect(models.map((model) => model.id)).toEqual([
       "deepseek/deepseek-v4-flash-0731",
+      "nvidia/nemotron-3.5-lightning-free",
       "poolside/laguna-s-2.1-free",
-      "inclusionai/ling-3.0-flash-sante-free",
+      "stealth/glyph-cluster",
     ]);
   });
 

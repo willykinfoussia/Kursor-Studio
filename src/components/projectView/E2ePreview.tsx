@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { StatusGlyph } from "../agent/StatusGlyph";
+import { CaptureMedia } from "../testing/CaptureMedia";
 import type { TestLevelProgress, TestProgressCase } from "../../lib/testing/progress";
 import { useE2ePreviewStore } from "../../stores/e2ePreviewStore";
-import { usePreviewBytes } from "./previewState";
 
 export function E2ePreview() {
   const progress = useE2ePreviewStore((state) => state.progress);
@@ -82,29 +82,8 @@ function CaseRow({ item }: { item: TestProgressCase }) {
 }
 
 function Capture({ image, video }: { image?: string | null; video?: string | null }) {
-  if (video) return <CaptureMedia path={video} kind="video" />;
+  if (video) return <CaptureMedia path={video} kind="video" autoPlay />;
   if (image) return <CaptureMedia path={image} kind="image" />;
   return <p className="e2e-empty">The page appears here when the test finishes.</p>;
 }
 
-function CaptureMedia({ path, kind }: { path: string; kind: "image" | "video" }) {
-  const { bytes, error } = usePreviewBytes(path);
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!bytes) return;
-    const next = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mediaType(path, kind) }));
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [bytes, kind, path]);
-  if (error) return <p className="e2e-empty">{error}</p>;
-  if (!url) return <p className="e2e-empty">Loading capture…</p>;
-  if (kind === "video") return <video className="e2e-media" src={url} controls autoPlay />;
-  return <img className="e2e-media" src={url} alt="E2E capture" />;
-}
-
-function mediaType(path: string, kind: "image" | "video") {
-  if (kind === "video") return "video/webm";
-  if (/\.jpe?g$/i.test(path)) return "image/jpeg";
-  if (/\.webp$/i.test(path)) return "image/webp";
-  return "image/png";
-}

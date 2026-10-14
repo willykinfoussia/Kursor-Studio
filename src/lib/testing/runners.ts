@@ -1,7 +1,7 @@
 import type { CheckRunner } from "../agent/verification/types";
 import type { ContextFileStore } from "../agent/context/types";
 import { addDev, exec } from "./discover";
-import { casesFromProgress, progressFromOutput, reporterForCommand, type TestLevelProgress } from "./progress";
+import { casesFromProgress, listTestMedia, progressFromOutput, reporterForCommand, type TestLevelProgress } from "./progress";
 import {
   TestingError,
   caseTypeFor,
@@ -14,6 +14,7 @@ import {
   type TestArtifact,
   type TestCase,
   type TestLevel,
+  type TestTarget,
 } from "./domain";
 
 export interface RunnerContext {
@@ -26,6 +27,7 @@ export interface RunnerContext {
   signal?: AbortSignal;
   onProgress?: (progress: TestLevelProgress) => void;
   writeFile?: (path: string, content: string) => Promise<void>;
+  target?: TestTarget;
 }
 
 export interface TestRunner {
@@ -105,10 +107,11 @@ export class VitestRunner implements TestRunner {
   }
 
   async run(ctx: RunnerContext, level: TestLevel): Promise<RawRun> {
-    const exclude = level === "unit"
+    const targeted = hasTarget(ctx);
+    const exclude = !targeted && level === "unit"
       ? " --exclude **/*.integration.test.ts --exclude **/*.e2e.test.ts --passWithNoTests"
       : "";
-    const include = level === "integration"
+    const include = !targeted && level === "integration"
       ? " **/*.integration.test.ts tests/integration --passWithNoTests"
       : "";
     const coverage = ctx.discovery.markers.includes("coverage") || scriptHasCoverage(ctx.discovery)
@@ -117,7 +120,7 @@ export class VitestRunner implements TestRunner {
     const jsonPath = `.kursor/vitest-${level}.json`;
     const raw = await runFixed(
       ctx,
-      `${exec(pm(ctx), "vitest")} run --reporter=verbose --reporter=json --outputFile.json=${jsonPath}${exclude}${include}${coverage}`,
+      `${exec(pm(ctx), "vitest")} run${targetClause(ctx, "vitest")} --reporter=verbose --reporter=json --outputFile.json=${jsonPath}${exclude}${include}${coverage}`,
       "TEST_EXECUTION_ERROR",
       level,
     );
@@ -184,26 +187,42 @@ export class PlaywrightRunner implements TestRunner {
     const base = script && script.toLowerCase().includes("playwright")
       ? script
       : `${exec(pm(ctx), "playwright")} test --reporter=line`;
-    const command = await withPreviewConfig(ctx, base);
-    return runFixed(ctx, command, "TEST_EXECUTION_ERROR", "e2e");
+    const command = `${await withPreviewConfig(ctx, base)}${targetClause(ctx, "playwright")}`;
+    const raw = await runFixed(ctx, command, "TEST_EXECUTION_ERROR", "e2e");
+    const reportJson = (await ctx.files?.readFile(".kursor/playwright.json").catch(() => ""))?.trim();
+    return reportJson ? { ...raw, reportJson } : raw;
   }
 
   async collectArtifacts(ctx: RunnerContext, raw: RawRun): Promise<TestArtifact[]> {
     const artifacts = logArtifacts(raw);
-    const dirs = ["test-results", "playwright-report"];
-    for (const dir of dirs) {
-      const entries = await ctx.files?.listDirectory(dir).catch(() => []) ?? [];
-      for (const entry of entries) {
-        const kind = artifactKind(entry.name);
-        if (!kind) continue;
-        artifacts.push({
-          id: `${ctx.runId}:${entry.path}`,
-          runId: ctx.runId,
-          kind,
-          path: entry.path,
-          label: entry.name,
-        });
-      }
+    const cases = this.parseResults(raw);
+    const seen = new Set<string>();
+    for (const attachment of playwrightAttachments(raw, ctx.cwd)) {
+      const key = mediaKey(attachment.path);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      artifacts.push({
+        id: `attachment:${attachment.path}`,
+        runId: ctx.runId,
+        kind: attachment.kind,
+        path: attachment.path,
+        label: attachment.label,
+        caseId: attachment.caseId,
+      });
+    }
+    for (const item of await listTestMedia(ctx.files)) {
+      const key = mediaKey(item.path);
+      if (seen.has(key)) continue;
+      if (item.kind !== "screenshot" && item.kind !== "video" && item.kind !== "trace") continue;
+      seen.add(key);
+      artifacts.push({
+        id: `media:${item.path}`,
+        runId: ctx.runId,
+        kind: item.kind,
+        path: item.path,
+        label: item.name,
+        caseId: matchMediaCase(item.path, cases),
+      });
     }
     return artifacts;
   }
@@ -375,6 +394,10 @@ export default defineConfig({
   ],
   testIgnore: ["**/node_modules/**", "**/dist/**", "**/src/**"],
   outputDir: path.join(projectRoot, "test-results"),
+  reporter: [
+    ["line"],
+    ["json", { outputFile: path.join(projectRoot, ".kursor", "playwright.json") }],
+  ],
   use: {
     screenshot: "on",
     video: "on",
@@ -403,6 +426,10 @@ export default defineConfig({
     screenshot: "on",
     video: "on",
   },
+  reporter: [
+    ["line"],
+    ["json", { outputFile: path.join(projectRoot, ".kursor", "playwright.json") }],
+  ],
   ...(webServer ? { webServer } : {}),
 });
 `;
@@ -494,7 +521,7 @@ function flattenPlaywright(suites: unknown[], level: TestLevel): TestCase[] {
         ? String((first.error as { message?: unknown }).message ?? "")
         : "";
       cases.push({
-        id: `playwright:${file ?? "spec"}:${title}`,
+        id: playwrightCaseId(file, title),
         name: title,
         description: title,
         type: "E2E",
@@ -585,6 +612,143 @@ function logArtifacts(raw: RawRun): TestArtifact[] {
     artifacts.push({ id: `stderr:${raw.startedAt}`, runId: "", kind: "stderr", path: "stderr", label: "stderr", body: raw.stderr.slice(0, 20_000) });
   }
   return artifacts;
+}
+
+function hasTarget(ctx: RunnerContext): boolean {
+  return Boolean(ctx.target?.file?.trim() || ctx.target?.name?.trim());
+}
+
+function targetClause(ctx: RunnerContext, kind: "vitest" | "playwright"): string {
+  const file = ctx.target?.file?.trim();
+  const name = ctx.target?.name?.trim();
+  if (!file && !name) return "";
+  const parts: string[] = [];
+  if (file) parts.push(quoteArg(file));
+  if (name) parts.push(kind === "vitest" ? `-t ${quoteArg(name)}` : `-g ${quoteArg(name)}`);
+  return ` ${parts.join(" ")}`;
+}
+
+function quoteArg(value: string): string {
+  if (/^[\w./\\:@-]+$/.test(value)) return value;
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function playwrightCaseId(file: string | undefined, title: string): string {
+  return `playwright:${file ?? "spec"}:${title}`;
+}
+
+function playwrightAttachments(raw: RawRun, cwd: string): Array<{ caseId: string; path: string; kind: ArtifactKind; label: string }> {
+  const json = structuredReport(raw);
+  const suites = json && Array.isArray(json.suites) ? json.suites : [];
+  const found: Array<{ caseId: string; path: string; kind: ArtifactKind; label: string }> = [];
+  walkAttachmentSuites(suites, undefined, cwd, found);
+  return found;
+}
+
+function walkAttachmentSuites(
+  suites: unknown[],
+  file: string | undefined,
+  cwd: string,
+  found: Array<{ caseId: string; path: string; kind: ArtifactKind; label: string }>,
+) {
+  for (const suite of suites) {
+    if (!suite || typeof suite !== "object") continue;
+    const row = suite as Record<string, unknown>;
+    const suiteFile = typeof row.file === "string" ? row.file : file;
+    if (Array.isArray(row.suites)) walkAttachmentSuites(row.suites, suiteFile, cwd, found);
+    const specs = Array.isArray(row.specs) ? row.specs : [];
+    for (const spec of specs) {
+      if (!spec || typeof spec !== "object") continue;
+      const specRow = spec as Record<string, unknown>;
+      const title = typeof specRow.title === "string" ? specRow.title : "spec";
+      const specFile = typeof specRow.file === "string" ? specRow.file : suiteFile;
+      const tests = Array.isArray(specRow.tests) ? specRow.tests : [];
+      for (const test of tests) {
+        if (!test || typeof test !== "object") continue;
+        const results = (test as { results?: unknown }).results;
+        if (!Array.isArray(results)) continue;
+        for (const result of results) {
+          if (!result || typeof result !== "object") continue;
+          const attachments = (result as { attachments?: unknown }).attachments;
+          if (!Array.isArray(attachments)) continue;
+          for (const attachment of attachments) {
+            if (!attachment || typeof attachment !== "object") continue;
+            const rowAttachment = attachment as Record<string, unknown>;
+            const rawPath = typeof rowAttachment.path === "string" ? rowAttachment.path : "";
+            const kind = attachmentMediaKind(rowAttachment);
+            if (!rawPath || !kind) continue;
+            found.push({
+              caseId: playwrightCaseId(specFile, title),
+              path: projectRelative(rawPath, cwd),
+              kind,
+              label: typeof rowAttachment.name === "string" && rowAttachment.name.trim() ? rowAttachment.name : rawPath,
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
+function attachmentMediaKind(row: Record<string, unknown>): ArtifactKind | null {
+  const contentType = typeof row.contentType === "string" ? row.contentType.toLowerCase() : "";
+  const name = typeof row.name === "string" ? row.name : "";
+  const path = typeof row.path === "string" ? row.path : "";
+  if (contentType.startsWith("video/") || /video/i.test(name)) return "video";
+  if (contentType.startsWith("image/") || /screenshot/i.test(name)) return "screenshot";
+  if (contentType.includes("zip") || /trace/i.test(name)) return "trace";
+  const fromPath = artifactKind(path.split(/[/\\]/).pop() ?? path);
+  if (fromPath === "screenshot" || fromPath === "video" || fromPath === "trace") return fromPath;
+  return null;
+}
+
+function matchMediaCase(path: string, cases: TestCase[]): string | undefined {
+  const real = cases.filter((item) => !item.id.endsWith(":suite"));
+  const titleHits = real.filter((item) => {
+    const title = slug(item.name);
+    return title.length >= 3 && includesSlug(path, title);
+  });
+  if (titleHits.length === 1) return titleHits[0]?.id;
+  const fileHits = real.filter((item) => {
+    const stem = fileStem(item.file);
+    return Boolean(stem && stem.length >= 3 && includesSlug(path, stem));
+  });
+  if (fileHits.length === 1) return fileHits[0]?.id;
+  if (real.length === 1) return real[0]?.id;
+  return undefined;
+}
+
+function projectRelative(path: string, cwd: string): string {
+  const norm = path.replace(/\\/g, "/");
+  const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+  const lower = norm.toLowerCase();
+  const rootLower = root.toLowerCase();
+  if (root && (lower === rootLower || lower.startsWith(`${rootLower}/`))) {
+    return norm.slice(root.length).replace(/^\/+/, "");
+  }
+  for (const marker of ["test-results/", "playwright-report/", ".kursor/"]) {
+    const at = lower.indexOf(marker);
+    if (at >= 0) return norm.slice(at);
+  }
+  return norm.replace(/^\/+/, "");
+}
+
+function mediaKey(path: string): string {
+  return path.replace(/\\/g, "/").split("/").filter(Boolean).slice(-3).join("/").toLowerCase();
+}
+
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function fileStem(file: string | undefined): string {
+  if (!file) return "";
+  const base = file.replace(/\\/g, "/").split("/").pop() ?? "";
+  return slug(base.replace(/\.[^.]+$/, "").replace(/\.(spec|test|e2e|integration)$/i, ""));
+}
+
+function includesSlug(path: string, slugValue: string): boolean {
+  return path.replace(/\\/g, "/").toLowerCase().includes(slugValue);
 }
 
 function artifactKind(name: string): ArtifactKind | null {

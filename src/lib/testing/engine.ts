@@ -18,6 +18,7 @@ import {
   type TestResult,
   type TestRun,
   type TestStrategyDecision,
+  type TestTarget,
   type UserCase,
 } from "./domain";
 import { findLatestCapture, progressFromCases, type TestLevelProgress } from "./progress";
@@ -42,6 +43,7 @@ export interface RunLevelsInput {
   taskId?: string | null;
   agentRunId?: string | null;
   signal?: AbortSignal;
+  target?: TestTarget;
 }
 
 export class TestingEngine {
@@ -148,7 +150,7 @@ export class TestingEngine {
           total: null,
           cases: [],
         });
-        const raw = await runner.run(this.context(discovery, run.id, input.signal, (progress) => this.publish(progress)), level);
+        const raw = await runner.run(this.context(discovery, run.id, input.signal, (progress) => this.publish(progress), input.target), level);
         run.commandLog.push(commandLog(raw, level, this.options.cwd ?? "", git.commitSha));
         const cases = linkCases(runner.parseResults(raw, level), userCases, input.taskId);
         const artifacts = (await runner.collectArtifacts(this.context(discovery, run.id, input.signal), raw))
@@ -244,6 +246,7 @@ export class TestingEngine {
     runId: string,
     signal?: AbortSignal,
     onProgress?: (progress: TestLevelProgress) => void,
+    target?: TestTarget,
   ) {
     return {
       runner: this.options.runner,
@@ -255,6 +258,7 @@ export class TestingEngine {
       signal,
       onProgress,
       writeFile: this.options.writeFile,
+      target,
     };
   }
 }
@@ -369,7 +373,8 @@ function refreshUserCases(userCases: UserCase[], cases: TestCase[]): UserCase[] 
 function linkCases(cases: TestCase[], userCases: UserCase[], taskId?: string | null): TestCase[] {
   return cases.map((item) => {
     const match = userCases.find((userCase) => item.name.includes(userCase.id) || userCase.linkedTests.includes(item.name) || userCase.linkedTests.includes(item.file ?? ""));
-    return { ...item, taskId: taskId ?? null, userCaseId: match?.id ?? item.userCaseId ?? null };
+    const description = match?.description.trim() ? match.description : item.description;
+    return { ...item, description, taskId: taskId ?? null, userCaseId: match?.id ?? item.userCaseId ?? null };
   });
 }
 

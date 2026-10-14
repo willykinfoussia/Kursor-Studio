@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
+import { agentRuntime } from "../../lib/agent/AgentRuntime";
+import { projectVerifyFiles } from "../../lib/agent/verification";
+import { buildCatalog, discoverTestFiles } from "../../lib/testing/catalog";
 import { createTestingStore } from "../../lib/testing/store";
-import type { MonitoringData, MonitoringQuery, RunStatus, TestCaseType } from "../../lib/testing/domain";
+import type { CatalogEntry, MonitoringData, MonitoringQuery, RunStatus, TestCaseType, TestLevel } from "../../lib/testing/domain";
+import type { TestLevelProgress } from "../../lib/testing/progress";
+import { useVerificationStore } from "../../stores/verificationStore";
 import { CoveragePanel } from "../verification/CoveragePanel";
+import { TestCatalog } from "./TestCatalog";
 
 const STATUSES: Array<RunStatus | ""> = ["", "PASSED", "FAILED", "PARTIAL", "ERROR", "CANCELLED", "RUNNING", "PENDING"];
 const TYPES: Array<TestCaseType | ""> = ["", "UNIT", "INTEGRATION", "E2E", "REGRESSION"];
@@ -9,25 +15,74 @@ const TYPES: Array<TestCaseType | ""> = ["", "UNIT", "INTEGRATION", "E2E", "REGR
 export function TestMonitoring({ projectId }: { projectId: string }) {
   const [filters, setFilters] = useState<MonitoringQuery>({ projectId });
   const [data, setData] = useState<MonitoringData | null>(null);
+  const [entries, setEntries] = useState<CatalogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFailure, setSelectedFailure] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [runningKey, setRunningKey] = useState<string | null>(null);
+  const [progress, setProgress] = useState<TestLevelProgress | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void createTestingStore().query({ ...filters, projectId }).then((next) => {
-      if (!cancelled) setData(next);
-    }).catch((reason: unknown) => {
+    const historical = Boolean(filters.branch || filters.commitSha || filters.taskId || filters.status);
+    void (async () => {
+      const next = await createTestingStore().query({ ...filters, projectId });
+      const discovered = historical ? [] : await discoverTestFiles(projectVerifyFiles()).catch(() => []);
+      if (cancelled) return;
+      setData(next);
+      setEntries(buildCatalog({
+        runs: next.runs,
+        userCases: next.userCases,
+        discovered,
+        strategy: next.strategy,
+      }).filter((entry) => matchesEntry(entry, filters)));
+      setError(null);
+    })().catch((reason: unknown) => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : "Monitoring unavailable.");
     });
     return () => {
       cancelled = true;
     };
-  }, [projectId, filters]);
+  }, [projectId, filters, reload]);
 
-  const failure = data?.failures.find((item) => item.id === selectedFailure) ?? null;
-  const artifact = failure
-    ? data?.runs.flatMap((run) => run.artifacts).find((item) => item.runId === failure.runId)
-    : null;
+  const failure = data?.failures.find((item) => item.case.id === selectedId) ?? null;
+
+  async function launch(input: { key: string; levels: TestLevel[]; file?: string; name?: string }) {
+    if (runningKey) {
+      agentRuntime.cancelVerification();
+      return;
+    }
+    const snapshot = useVerificationStore.getState();
+    if (snapshot.running) {
+      setError("Verification is already running.");
+      return;
+    }
+    useVerificationStore.setState({ running: true, phase: "running", health: "running", trigger: "manual", error: null });
+    setRunningKey(input.key);
+    setProgress(null);
+    setError(null);
+    try {
+      await agentRuntime.runProjectTests({
+        levels: input.levels,
+        file: input.file,
+        name: input.name,
+        onProgress: setProgress,
+      });
+      setReload((value) => value + 1);
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Unable to run tests.");
+    } finally {
+      useVerificationStore.setState({
+        running: false,
+        stopping: false,
+        phase: "idle",
+        health: snapshot.health,
+        trigger: snapshot.trigger,
+      });
+      setRunningKey(null);
+      setProgress(null);
+    }
+  }
 
   return (
     <section className="verify-panel test-monitor">
@@ -52,6 +107,15 @@ export function TestMonitoring({ projectId }: { projectId: string }) {
           </select>
         </label>
       </div>
+      <h3>Tests</h3>
+      <TestCatalog
+        entries={entries}
+        selectedId={selectedId}
+        runningKey={runningKey}
+        progress={progress}
+        onSelect={setSelectedId}
+        onRun={(input) => void launch(input)}
+      />
       {!data || data.runs.length === 0 ? (
         <p className="verify-muted">No test runs yet.</p>
       ) : (
@@ -123,7 +187,7 @@ export function TestMonitoring({ projectId }: { projectId: string }) {
             <ul className="test-level-list">
               {data.failures.map((result) => (
                 <li key={result.id}>
-                  <button type="button" className="test-failure" onClick={() => setSelectedFailure(result.id)}>
+                  <button type="button" className="test-failure" onClick={() => setSelectedId(result.case.id)}>
                     {result.case.name}
                   </button>
                   <span>{result.case.error ?? result.case.status}</span>
@@ -131,20 +195,25 @@ export function TestMonitoring({ projectId }: { projectId: string }) {
               ))}
             </ul>
           )}
-          {failure && (
+          {failure && !entries.some((entry) => entry.id === failure.case.id) && (
             <div className="test-failure-detail">
               <h3>{failure.case.name}</h3>
+              <p>{failure.case.description}</p>
               <p>{failure.case.error}</p>
               {failure.case.stack && <pre className="test-plan">{failure.case.stack}</pre>}
-              <p>Task {failure.taskId ?? "—"} · run {failure.runId.slice(0, 8)}</p>
-              {artifact && <p>Artifact {artifact.kind}: {artifact.label}</p>}
-              {artifact?.body && <pre className="test-plan">{artifact.body}</pre>}
             </div>
           )}
         </>
       )}
     </section>
   );
+}
+
+function matchesEntry(entry: CatalogEntry, filters: MonitoringQuery): boolean {
+  if (filters.type && entry.type !== filters.type) return false;
+  if (filters.runner && entry.runner !== filters.runner) return false;
+  if (filters.userCaseId && entry.userCase?.id !== filters.userCaseId) return false;
+  return true;
 }
 
 function mark(results: { case: { type: string; status: string } }[], type: string) {

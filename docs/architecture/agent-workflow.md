@@ -656,7 +656,7 @@ Invalid structured output specialists : `parseDelegateTrailer` fallback = tout l
 
 Task types (`planning`, `coding`, `research`, …) **ne créent pas** de phases LLM. Ils réordonnent la liste.
 
-Modèles builtin : `poolside/laguna-s-2.1-free`, `inclusionai/ling-3.0-flash-sante-free`, `deepseek/deepseek-v4-flash-0731`. Provider réel : **Vercel AI Gateway uniquement**. `ModelProviderKind` `openrouter` \| `ollama` \| `local` : **NOT IMPLEMENTED**.
+Modèles builtin : `nvidia/nemotron-3.5-lightning-free`, `poolside/laguna-s-2.1-free`, `stealth/glyph-cluster`, `deepseek/deepseek-v4-flash-0731`. Provider réel : **Vercel AI Gateway uniquement**. `ModelProviderKind` `openrouter` \| `ollama` \| `local` : **NOT IMPLEMENTED**.
 
 **FallbackManager** :
 

@@ -44,6 +44,9 @@ export function useAgentRuntime() {
         break;
       case "context-assembled":
         store.setStatus("thinking");
+        if (event.scope !== "subagent" && event.usage && event.conversationId) {
+          store.setContextUsage(event.conversationId, event.usage);
+        }
         break;
       case "compacted":
         store.applyTimelineEvent(event);

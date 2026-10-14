@@ -22,7 +22,7 @@ import { agentLogger } from "./logger";
 import { usageMetrics, type UsageMetrics } from "./metrics";
 import { ModelRouter } from "./ModelRouter";
 import { GatewayModelProvider } from "./ModelProvider";
-import { PermissionManager, sessionModeFromSettings, type ApprovalDecision, type PermissionMode, type PermissionPrompter } from "./PermissionManager";
+import { PermissionManager, permissionManagerAsGate, sessionModeFromSettings, type ApprovalDecision, type PermissionMode, type PermissionPrompter } from "./PermissionManager";
 import { TaskGrantStore } from "./permissions/grants";
 import { BASELINE_ALLOW_RULES, upsertAllowRule } from "./permissions/policy";
 import type { PermissionRule } from "./permissions/types";
@@ -58,6 +58,7 @@ import type {
 import { VercelAIService } from "./VercelAIService";
 import { buildSystemPrompt } from "./systemPrompt";
 import { clipPromptText, toSliceSummary } from "./context/assemble";
+import { buildContextUsage } from "./context/usage";
 import { WorkflowEngine } from "./workflows/WorkflowEngine";
 import {
   VerificationEngine,
@@ -66,9 +67,12 @@ import {
   formatForModel,
   projectVerifyFiles,
 } from "./verification";
+import { liveCommandRunner } from "./verification/liveRunner";
 import { runRequiredVerification, type RequiredVerificationTesting } from "./verification/runRequiredVerification";
 import type { VerificationRunInput } from "./verification/types";
 import { TestingEngine } from "../testing/engine";
+import type { TestLevel, TestRun } from "../testing/domain";
+import type { TestLevelProgress } from "../testing/progress";
 import { createTestingStore } from "../testing/store";
 import { ToolExecutor } from "./ToolExecutor";
 import { classifyPermission, PERMISSION_EVALUATION_MODEL } from "./permissionClassifier";
@@ -518,7 +522,10 @@ export class AgentRuntime {
       const text = event.text.trim();
       this.turnAssistantText = this.turnAssistantText ? `${this.turnAssistantText}\n\n${text}` : text;
     }
-    this.tracer.ingest(event);
+    const traced = event.type === "context-assembled"
+      ? { ...event, usage: undefined }
+      : event;
+    this.tracer.ingest(traced);
     this.listeners.forEach((listener) => listener(event));
     const checkpoint = this.recovery.checkpoint;
     if ((event.type === "error" || event.type === "cancelled") && checkpoint) {
@@ -842,6 +849,13 @@ export class AgentRuntime {
       slices: context.assembled.slices.map(toSliceSummary),
       systemPrompt: clipPromptText(context.assembled.systemPrompt),
       scope: "parent",
+      conversationId: this.getConversationId(),
+      usage: buildContextUsage({
+        slices: context.assembled.slices,
+        toolsEnabled,
+        hasProject: Boolean(context.project.projectName),
+        maxTokens: budget.maxTokens,
+      }),
     });
     skillSession.emit = (event) => this.emit(event);
     for (const skill of skillSession.invoked) {
@@ -991,6 +1005,93 @@ export class AgentRuntime {
 
   cancelVerification() {
     this.verifyController?.abort("user-cancelled");
+  }
+
+  async runProjectTests(input: {
+    levels: TestLevel[];
+    file?: string;
+    name?: string;
+    onProgress?: (progress: TestLevelProgress) => void;
+  }): Promise<TestRun> {
+    const projectId = this.getProjectId();
+    if (!projectId || !this.getProjectRoot()) throw new Error("No project is currently open.");
+    if (this.controller) throw new Error("The agent is already running.");
+    if (this.verifyController) throw new Error("Verification is already running.");
+    const settings = this.getSettings();
+    const grants = new TaskGrantStore();
+    const requestId = crypto.randomUUID();
+    this.verifyController = new AbortController();
+    const signal = this.verifyController.signal;
+    this.setStatus("verifying");
+    try {
+      const permissions = new PermissionManager({
+        mode: sessionModeFromSettings(settings.automaticTools !== false, settings.permissionMode),
+        confirmDestructive: settings.confirmDestructive !== false,
+        registry: this.registry,
+        getProjectRoot: () => this.getProjectRoot(),
+        prompter: this.prompter,
+        grants,
+        allowRules: [...BASELINE_ALLOW_RULES, ...(settings.permissionWhitelist ?? [])],
+        yoloMode: settings.yoloMode === true,
+        onAsk: (request) => {
+          this.setStatus("waiting_approval");
+          this.emit({ type: "permission-required", ...request });
+        },
+        classifier: this.aiService.evaluate
+          ? async (prompt) => {
+            this.metrics.request("LLM-PERM");
+            this.emit({ type: "llm-started", requestId, kind: "perm", model: PERMISSION_EVALUATION_MODEL });
+            return classifyPermission(this.aiService, prompt, signal);
+          }
+          : undefined,
+        onClassifier: (event) => {
+          this.emit({ type: "permission-classifier", ...event });
+        },
+        onPermanentGrant: this.permissionSession(settings).onPermanentGrant,
+      });
+      const executor = new ToolExecutor({
+        registry: this.registry,
+        permissions,
+        getProjectRoot: () => this.getProjectRoot(),
+        hooks: this.hooks,
+        onHook: (decision, event) => {
+          if (decision.action === "deny") {
+            this.emit({ type: "hook-denied", event, message: decision.message ?? "Blocked by hook.", metadata: decision.metadata });
+          } else if (decision.action === "warn" && decision.message) {
+            this.emit({ type: "hook-warned", event, message: decision.message, metadata: decision.metadata });
+          }
+        },
+      });
+      const runner = this.checkRunner ?? liveCommandRunner({
+        run: (command) => executor.run("run_command", { command }, { signal }),
+        gate: permissionManagerAsGate(permissions),
+        process: nativeProcessService,
+      });
+      const store = createTestingStore();
+      const engine = new TestingEngine({
+        files: projectVerifyFiles(),
+        runner,
+        store,
+        ai: this.aiService,
+        cwd: this.getProjectRoot() ?? "",
+        onProgress: (progress) => {
+          input.onProgress?.(progress);
+          this.emit({ type: "test-progress", requestId, ...progress });
+        },
+        writeFile: (path, content) => fileSystemService.writeFile(path, content),
+      });
+      return await engine.runLevels({
+        projectId,
+        levels: input.levels,
+        taskId: this.activeTaskId,
+        agentRunId: this.lastRunId,
+        signal,
+        target: input.file || input.name ? { file: input.file, name: input.name } : undefined,
+      });
+    } finally {
+      this.verifyController = null;
+      if (!this.controller) this.setStatus("idle");
+    }
   }
 
   verification() {

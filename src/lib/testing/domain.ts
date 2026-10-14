@@ -135,6 +135,12 @@ export interface TestArtifact {
   path: string;
   label: string;
   body?: string;
+  caseId?: string;
+}
+
+export interface TestTarget {
+  file?: string;
+  name?: string;
 }
 
 export interface TestResult {
@@ -207,6 +213,28 @@ export interface CoveragePoint {
   runId: string;
   timestamp: number;
   coverage: CoverageSnapshot;
+}
+
+export interface CatalogEntry {
+  id: string;
+  level: TestLevel;
+  type: TestCaseType;
+  name: string;
+  description: string;
+  file?: string;
+  runner: string;
+  framework: string;
+  status: CaseStatus;
+  durationMs?: number;
+  error?: string;
+  stack?: string;
+  userCase: UserCase | null;
+  steps: string[];
+  expectedResults: string[];
+  preconditions: string[];
+  artifacts: TestArtifact[];
+  command: CommandLog | null;
+  runId?: string;
 }
 
 export interface MonitoringData {

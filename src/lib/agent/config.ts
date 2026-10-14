@@ -18,21 +18,27 @@ export const MAX_TOOL_STEPS = MAX_AGENT_STEPS;
 
 export const AI_MODELS = [
   {
-    id: "poolside/laguna-s-2.1-free",
-    name: "Laguna S 2.1",
+    id: "nvidia/nemotron-3.5-lightning-free",
+    name: "Nemotron 3.5 Lightning",
     priority: 1,
     enabled: true,
   },
   {
-    id: "inclusionai/ling-3.0-flash-sante-free",
-    name: "Ling 3.0 Flash Sante",
+    id: "poolside/laguna-s-2.1-free",
+    name: "Laguna S 2.1",
     priority: 2,
+    enabled: true,
+  },
+  {
+    id: "stealth/glyph-cluster",
+    name: "Glyph Cluster",
+    priority: 3,
     enabled: true,
   },
   {
     id: "deepseek/deepseek-v4-flash-0731",
     name: "DeepSeek V4 Flash",
-    priority: 3,
+    priority: 4,
     enabled: true,
   },
 ] as const satisfies readonly AIModel[];

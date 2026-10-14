@@ -3,7 +3,8 @@ import type { CheckRunner, VerificationReport } from "../../agent/verification/t
 import { testingLevelsFor } from "../../agent/verification/whenToRun";
 import { mergeTestingReport } from "../bridge";
 import { constrainDecision, policyDecision } from "../decide";
-import type { ProjectDiscovery, TestCase, TestRun, TestStrategyDecision } from "../domain";
+import type { ProjectDiscovery, TestCase, TestRun, TestStrategyDecision, UserCase } from "../domain";
+import { buildCatalog, discoverTestFiles } from "../catalog";
 import { discoverProject, memoryFileStore } from "../discover";
 import { TestingEngine } from "../engine";
 import { parseCoverageSummary, PlaywrightRunner, playwrightPreviewConfig, VitestRunner } from "../runners";
@@ -164,6 +165,7 @@ describe("runners", () => {
     expect(bare).toContain("**/e2e/**/*.{spec,test}.{js,ts,mjs,cjs,jsx,tsx}");
     expect(bare).toContain('screenshot: "on"');
     expect(bare).toContain('video: "on"');
+    expect(bare).toContain('playwright.json');
 
     expect(parseCoverageSummary(JSON.stringify({
       total: { lines: { pct: 82.4 }, branches: { pct: 70 }, functions: { pct: 90 }, statements: { pct: 81 } },
@@ -342,6 +344,166 @@ describe("empty integration suite", () => {
     expect(integration?.command).not.toContain("--exclude");
     expect(report.ok).toBe(true);
     expect(report.blockers).toEqual([]);
+  });
+});
+
+describe("targeted runs and catalog", () => {
+  it("passes the file and title through to vitest and playwright", async () => {
+    const commands: string[] = [];
+    const runner: CheckRunner = {
+      async run(command) {
+        commands.push(command);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    };
+    const discovery = {
+      markers: [],
+      scripts: { "test:e2e": "pnpm exec playwright test" },
+      packageManager: "pnpm",
+    } as ProjectDiscovery;
+    await new VitestRunner().run({
+      runner,
+      packageManager: "pnpm",
+      cwd: "",
+      runId: "r1",
+      discovery,
+      target: { file: "src/refund.test.ts", name: "rejects an empty amount" },
+    }, "unit");
+    expect(commands[0]).toContain("src/refund.test.ts");
+    expect(commands[0]).toContain("-t");
+    expect(commands[0]).toContain("rejects an empty amount");
+    expect(commands[0]).not.toContain("--exclude");
+
+    await new PlaywrightRunner().run({
+      runner,
+      packageManager: "pnpm",
+      cwd: "",
+      runId: "r1",
+      discovery,
+      target: { file: "e2e/login.spec.ts", name: "UC-001 login" },
+    }, "e2e");
+    expect(commands[1]).toContain("e2e/login.spec.ts");
+    expect(commands[1]).toContain("-g");
+    expect(commands[1]).toContain("UC-001 login");
+
+    const files = memoryFileStore({
+      "package.json": packageJson({ devDependencies: { vitest: "3.0.0" } }),
+    });
+    await new TestingEngine({ files, runner, store: new MemoryTestingStore() }).runUnitTests({
+      projectId: "p1",
+      target: { file: "src/refund.test.ts", name: "rejects an empty amount" },
+    });
+    expect(commands.at(-1)).toContain("src/refund.test.ts");
+    expect(commands.at(-1)).toContain("-t");
+  });
+
+  it("attaches nested videos and json attachments to the playwright case", async () => {
+    const files = memoryFileStore({
+      "test-results/login-uc-001-login/video.webm": "",
+      "test-results/other/note.txt": "log",
+    });
+    const artifacts = await new PlaywrightRunner().collectArtifacts({
+      runner: { async run() { return { exitCode: 0, stdout: "", stderr: "" }; } },
+      files,
+      packageManager: "pnpm",
+      cwd: "C:/app",
+      runId: "run-1",
+      discovery: { markers: [], scripts: {}, packageManager: "pnpm" } as ProjectDiscovery,
+    }, {
+      command: "playwright test",
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      startedAt: 1,
+      reportJson: JSON.stringify({
+        suites: [{
+          file: "e2e/login.spec.ts",
+          specs: [{
+            title: "UC-001 login",
+            ok: true,
+            file: "e2e/login.spec.ts",
+            tests: [{
+              results: [{
+                status: "passed",
+                attachments: [
+                  { name: "video", contentType: "video/webm", path: "C:/app/test-results/login-uc-001-login/video.webm" },
+                  { name: "screenshot", contentType: "image/png", path: "C:/app/test-results/login-uc-001-login/test-failed-1.png" },
+                  { name: "trace", contentType: "application/zip", path: "C:/app/test-results/login-uc-001-login/trace.zip" },
+                ],
+              }],
+            }],
+          }],
+        }],
+      }),
+    });
+    const video = artifacts.find((artifact) => artifact.kind === "video");
+    expect(video?.caseId).toBe("playwright:e2e/login.spec.ts:UC-001 login");
+    expect(video?.path).toBe("test-results/login-uc-001-login/video.webm");
+    expect(artifacts.filter((artifact) => artifact.kind === "video")).toHaveLength(1);
+    expect(artifacts.find((artifact) => artifact.kind === "screenshot")?.caseId).toBe(video?.caseId);
+    expect(artifacts.find((artifact) => artifact.kind === "trace")?.caseId).toBe(video?.caseId);
+  });
+
+  it("lists an unrun spec beside the latest result and uses the user case description", async () => {
+    const discovered = await discoverTestFiles(memoryFileStore({
+      "e2e/login.spec.ts": 'test("UC-001 login", () => {})\ntest("logs out", () => {})\n',
+      "src/new.test.ts": 'it("lists drinks", () => {})\n',
+    }));
+    const userCase: UserCase = {
+      id: "UC-001",
+      projectId: "p1",
+      name: "Login",
+      description: "User can sign in",
+      actor: "user",
+      preconditions: [],
+      steps: ["Open login"],
+      expectedResults: ["Dashboard"],
+      priority: "critical",
+      status: "open",
+      linkedTests: [],
+    };
+    const run: TestRun = {
+      id: "run-1",
+      projectId: "p1",
+      timestamp: 10,
+      environment: "node/pnpm",
+      status: "PASSED",
+      durationMs: 20,
+      levels: ["e2e"],
+      results: [{
+        id: "run-1:login",
+        runId: "run-1",
+        projectId: "p1",
+        case: {
+          id: "playwright:e2e/login.spec.ts:UC-001 login",
+          name: "UC-001 login",
+          description: "UC-001 login",
+          type: "E2E",
+          framework: "playwright",
+          runner: "playwright",
+          file: "e2e/login.spec.ts",
+          status: "PASSED",
+          userCaseId: "UC-001",
+        },
+      }],
+      artifacts: [{
+        id: "video",
+        runId: "run-1",
+        kind: "video",
+        path: "test-results/login/video.webm",
+        label: "video",
+        caseId: "playwright:e2e/login.spec.ts:UC-001 login",
+      }],
+      commandLog: [{ command: "pnpm exec playwright test", cwd: "", exitCode: 0, stdout: "", stderr: "", timestamp: 10, level: "e2e" }],
+    };
+    const catalog = buildCatalog({ runs: [run], userCases: [userCase], discovered });
+    const login = catalog.find((entry) => entry.name === "UC-001 login");
+    expect(login?.description).toBe("User can sign in");
+    expect(login?.status).toBe("PASSED");
+    expect(login?.steps).toEqual(["Open login"]);
+    expect(login?.artifacts[0]?.kind).toBe("video");
+    expect(catalog.find((entry) => entry.name === "logs out")).toMatchObject({ status: "QUEUED", level: "e2e" });
+    expect(catalog.find((entry) => entry.name === "lists drinks")).toMatchObject({ status: "QUEUED", level: "unit" });
   });
 });
 

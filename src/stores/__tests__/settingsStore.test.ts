@@ -34,6 +34,7 @@ describe("settingsStore persistence-ready updates", () => {
       AI_MODELS[2].id,
       AI_MODELS[0].id,
       AI_MODELS[1].id,
+      AI_MODELS[3].id,
     ]);
     expect(state.defaultModel).toBe(AI_MODELS[2].id);
   });

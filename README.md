@@ -78,9 +78,10 @@ in source files or commit it.
 
 The default model route is:
 
-1. `poolside/laguna-s-2.1-free`
-2. `inclusionai/ling-3.0-flash-sante-free`
-3. `deepseek/deepseek-v4-flash-0731`
+1. `nvidia/nemotron-3.5-lightning-free`
+2. `poolside/laguna-s-2.1-free`
+3. `stealth/glyph-cluster`
+4. `deepseek/deepseek-v4-flash-0731`
 
 Each model has a 60-second timeout and one retry for temporary failures.
 Automatic fallback and the default model can be changed in Settings > AI.
